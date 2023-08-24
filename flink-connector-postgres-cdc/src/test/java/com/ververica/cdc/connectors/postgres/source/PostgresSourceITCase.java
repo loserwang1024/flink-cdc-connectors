@@ -35,6 +35,7 @@ import com.ververica.cdc.connectors.postgres.testutils.UniqueDatabase;
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.jdbc.JdbcConnection;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.Timeout;
@@ -88,6 +89,14 @@ public class PostgresSourceITCase extends PostgresTestBase {
                     POSTGRES_CONTAINER,
                     DB_NAME_PREFIX,
                     SCHEMA_NAME,
+                    POSTGRES_CONTAINER.getUsername(),
+                    POSTGRES_CONTAINER.getPassword());
+
+    private final UniqueDatabase custom2Database =
+            new UniqueDatabase(
+                    POSTGRES_CONTAINER,
+                    "postgres2",
+                    "customer2",
                     POSTGRES_CONTAINER.getUsername(),
                     POSTGRES_CONTAINER.getPassword());
 
@@ -196,6 +205,182 @@ public class PostgresSourceITCase extends PostgresTestBase {
                                             SCHEMA_NAME + ".customers_no_pk"))
                             .isPresent());
         }
+    }
+
+    @Test
+    public void testMultiDataBaseError_with_same_tablename() throws Exception {
+        customDatabase.createAndInitialize();
+        custom2Database.createAndInitialize();
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+
+        env.setParallelism(2);
+        env.enableCheckpointing(200L);
+        env.setRestartStrategy(RestartStrategies.noRestart());
+        String sourceDDL1 =
+                format(
+                        "CREATE TABLE customers1 ("
+                                + " id BIGINT NOT NULL,"
+                                + " name STRING,"
+                                + " address STRING,"
+                                + " phone_number STRING,"
+                                + " primary key (id) not enforced"
+                                + ") WITH ("
+                                + " 'connector' = 'postgres-cdc',"
+                                + " 'scan.incremental.snapshot.enabled' = 'true',"
+                                + " 'hostname' = '%s',"
+                                + " 'port' = '%s',"
+                                + " 'username' = '%s',"
+                                + " 'password' = '%s',"
+                                + " 'database-name' = '%s',"
+                                + " 'schema-name' = '%s',"
+                                + " 'table-name' = '%s',"
+                                + " 'scan.startup.mode' = '%s',"
+                                + " 'scan.incremental.snapshot.chunk.size' = '100',"
+                                + " 'slot.name' = '%s'"
+                                + ")",
+                        customDatabase.getHost(),
+                        customDatabase.getDatabasePort(),
+                        customDatabase.getUsername(),
+                        customDatabase.getPassword(),
+                        customDatabase.getDatabaseName(),
+                        SCHEMA_NAME,
+                        "customers",
+                        DEFAULT_SCAN_STARTUP_MODE,
+                        getSlotName());
+        String sourceDDL2 =
+                format(
+                        "CREATE TABLE customers2 ("
+                                + " id BIGINT NOT NULL,"
+                                + " name STRING,"
+                                + " address STRING,"
+                                + " phone_number STRING,"
+                                + " primary key (id) not enforced"
+                                + ") WITH ("
+                                + " 'connector' = 'postgres-cdc',"
+                                + " 'scan.incremental.snapshot.enabled' = 'true',"
+                                + " 'hostname' = '%s',"
+                                + " 'port' = '%s',"
+                                + " 'username' = '%s',"
+                                + " 'password' = '%s',"
+                                + " 'database-name' = '%s',"
+                                + " 'schema-name' = '%s',"
+                                + " 'table-name' = '%s',"
+                                + " 'scan.startup.mode' = '%s',"
+                                + " 'scan.incremental.snapshot.chunk.size' = '100',"
+                                + " 'slot.name' = '%s'"
+                                + ")",
+                        customDatabase.getHost(),
+                        customDatabase.getDatabasePort(),
+                        customDatabase.getUsername(),
+                        customDatabase.getPassword(),
+                        customDatabase.getDatabaseName(),
+                        SCHEMA_NAME,
+                        "customers",
+                        DEFAULT_SCAN_STARTUP_MODE,
+                        getSlotName());
+        tEnv.executeSql(sourceDDL1);
+        tEnv.executeSql(sourceDDL2);
+        TableResult tableResult =
+                tEnv.executeSql(
+                        "select t1.id, t1.name, t1.address, t1.phone_number from customers1 as t1 , customers2 as t2 where t1.id = t2.id");
+        CloseableIterator<Row> iterator = tableResult.collect();
+
+
+        // todo: there is no common id between customer tabsles in postgres and postgres1 database;
+        // todo: if return true, it means it read  cumstomer table in postgres database
+        assertTrue(iterator.hasNext());
+        tableResult.getJobClient().get().cancel();
+
+    }
+
+    @Test
+    public void testMultiDataBaseError_with_different_name() throws Exception {
+        customDatabase.createAndInitialize();
+        custom2Database.createAndInitialize();
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+
+        env.setParallelism(2);
+        env.enableCheckpointing(200L);
+        env.setRestartStrategy(RestartStrategies.noRestart());
+        String sourceDDL1 =
+                format(
+                        "CREATE TABLE customers1 ("
+                                + " id BIGINT NOT NULL,"
+                                + " name STRING,"
+                                + " address STRING,"
+                                + " phone_number STRING,"
+                                + " primary key (id) not enforced"
+                                + ") WITH ("
+                                + " 'connector' = 'postgres-cdc',"
+                                + " 'scan.incremental.snapshot.enabled' = 'true',"
+                                + " 'hostname' = '%s',"
+                                + " 'port' = '%s',"
+                                + " 'username' = '%s',"
+                                + " 'password' = '%s',"
+                                + " 'database-name' = '%s',"
+                                + " 'schema-name' = '%s',"
+                                + " 'table-name' = '%s',"
+                                + " 'scan.startup.mode' = '%s',"
+                                + " 'scan.incremental.snapshot.chunk.size' = '100',"
+                                + " 'slot.name' = '%s'"
+                                + ")",
+                        customDatabase.getHost(),
+                        customDatabase.getDatabasePort(),
+                        customDatabase.getUsername(),
+                        customDatabase.getPassword(),
+                        customDatabase.getDatabaseName(),
+                        SCHEMA_NAME,
+                        "customers_1",
+                        DEFAULT_SCAN_STARTUP_MODE,
+                        getSlotName());
+        String sourceDDL2 =
+                format(
+                        "CREATE TABLE customers2 ("
+                                + " id BIGINT NOT NULL,"
+                                + " name STRING,"
+                                + " address STRING,"
+                                + " phone_number STRING,"
+                                + " primary key (id) not enforced"
+                                + ") WITH ("
+                                + " 'connector' = 'postgres-cdc',"
+                                + " 'scan.incremental.snapshot.enabled' = 'true',"
+                                + " 'hostname' = '%s',"
+                                + " 'port' = '%s',"
+                                + " 'username' = '%s',"
+                                + " 'password' = '%s',"
+                                + " 'database-name' = '%s',"
+                                + " 'schema-name' = '%s',"
+                                + " 'table-name' = '%s',"
+                                + " 'scan.startup.mode' = '%s',"
+                                + " 'scan.incremental.snapshot.chunk.size' = '100',"
+                                + " 'slot.name' = '%s'"
+                                + ")",
+                        customDatabase.getHost(),
+                        customDatabase.getDatabasePort(),
+                        customDatabase.getUsername(),
+                        customDatabase.getPassword(),
+                        customDatabase.getDatabaseName(),
+                        SCHEMA_NAME,
+                        "customers2",
+                        DEFAULT_SCAN_STARTUP_MODE,
+                        getSlotName());
+        tEnv.executeSql(sourceDDL1);
+        tEnv.executeSql(sourceDDL2);
+        TableResult tableResult =
+                tEnv.executeSql(
+                        "select t1.id, t1.name, t1.address, t1.phone_number from customers1 as t1 , customers2 as t2 where t1.id = t2.id");
+        CloseableIterator<Row> iterator = tableResult.collect();
+
+
+        // todo: aa the datas are same between  customer table in postgres and table customers_1 in postgres1 database;
+        // todo: if return flase, it means it read  only one  postgres database which don't have both table
+        assertTrue(iterator.hasNext());
+        tableResult.getJobClient().get().cancel();
+
     }
 
     private void testPostgresParallelSource(
