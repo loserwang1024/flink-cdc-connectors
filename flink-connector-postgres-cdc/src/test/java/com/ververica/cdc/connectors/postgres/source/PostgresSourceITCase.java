@@ -35,7 +35,6 @@ import com.ververica.cdc.connectors.postgres.testutils.UniqueDatabase;
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.jdbc.JdbcConnection;
 import org.apache.commons.lang3.StringUtils;
-import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.Timeout;
@@ -208,6 +207,72 @@ public class PostgresSourceITCase extends PostgresTestBase {
     }
 
     @Test
+    public void testMultiDataBaseError_with_streaming()
+            throws SQLException, ExecutionException, InterruptedException {
+        customDatabase.createAndInitialize();
+        custom2Database.createAndInitialize();
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+
+        env.setParallelism(2);
+        env.enableCheckpointing(200L);
+        env.setRestartStrategy(RestartStrategies.noRestart());
+        String sourceDDL =
+                format(
+                        "CREATE TABLE customers ("
+                                + " id BIGINT NOT NULL,"
+                                + " name STRING,"
+                                + " address STRING,"
+                                + " phone_number STRING,"
+                                + " primary key (id) not enforced"
+                                + ") WITH ("
+                                + " 'connector' = 'postgres-cdc',"
+                                + " 'scan.incremental.snapshot.enabled' = 'true',"
+                                + " 'hostname' = '%s',"
+                                + " 'port' = '%s',"
+                                + " 'username' = '%s',"
+                                + " 'password' = '%s',"
+                                + " 'database-name' = '%s',"
+                                + " 'schema-name' = '%s',"
+                                + " 'table-name' = '%s',"
+                                + " 'scan.startup.mode' = '%s',"
+                                + " 'scan.incremental.snapshot.chunk.size' = '100',"
+                                + " 'slot.name' = '%s'"
+                                + ")",
+                        customDatabase.getHost(),
+                        customDatabase.getDatabasePort(),
+                        customDatabase.getUsername(),
+                        customDatabase.getPassword(),
+                        customDatabase.getDatabaseName(),
+                        SCHEMA_NAME,
+                        "customers_1",
+                        "latest-offset",
+                        getSlotName());
+        tEnv.executeSql(sourceDDL);
+        TableResult tableResult = tEnv.executeSql("select * from customers");
+        waitUntilJobRunning(tableResult);
+
+        CloseableIterator<Row> iterator = tableResult.collect();
+
+        makeFirstPartStreamEvents(
+                getConnection(customDatabase),
+                customDatabase.getDatabaseName() + '.' + SCHEMA_NAME + '.' + "customers_1");
+        // wait for the stream reading
+        Thread.sleep(2000L);
+        assertEqualsInAnyOrder(firstPartStreamEvents, fetchRows(iterator, firstPartStreamEvents.size()));
+
+        makeSecondPartStreamEvents(
+                getConnection(custom2Database),
+                custom2Database.getDatabaseName() + '.' + SCHEMA_NAME + '.' + "customers_1");
+
+        // wait for the stream reading
+        Thread.sleep(2000L);
+        // todo: both table in two database will be received
+        assertEqualsInAnyOrder(secondPartStreamEvents, fetchRows(iterator, secondPartStreamEvents.size()));
+        tableResult.getJobClient().get().cancel();
+    }
+
+    @Test
     public void testMultiDataBaseError_with_same_tablename() throws Exception {
         customDatabase.createAndInitialize();
         custom2Database.createAndInitialize();
@@ -287,12 +352,10 @@ public class PostgresSourceITCase extends PostgresTestBase {
                         "select t1.id, t1.name, t1.address, t1.phone_number from customers1 as t1 , customers2 as t2 where t1.id = t2.id");
         CloseableIterator<Row> iterator = tableResult.collect();
 
-
         // todo: there is no common id between customer tabsles in postgres and postgres1 database;
         // todo: if return true, it means it read  cumstomer table in postgres database
         assertTrue(iterator.hasNext());
         tableResult.getJobClient().get().cancel();
-
     }
 
     @Test
@@ -375,12 +438,12 @@ public class PostgresSourceITCase extends PostgresTestBase {
                         "select t1.id, t1.name, t1.address, t1.phone_number from customers1 as t1 , customers2 as t2 where t1.id = t2.id");
         CloseableIterator<Row> iterator = tableResult.collect();
 
-
-        // todo: aa the datas are same between  customer table in postgres and table customers_1 in postgres1 database;
-        // todo: if return flase, it means it read  only one  postgres database which don't have both table
+        // todo: aa the datas are same between  customer table in postgres and table customers_1 in
+        // postgres1 database;
+        // todo: if return flase, it means it read  only one  postgres database which don't have
+        // both table
         assertTrue(iterator.hasNext());
         tableResult.getJobClient().get().cancel();
-
     }
 
     private void testPostgresParallelSource(
@@ -631,6 +694,16 @@ public class PostgresSourceITCase extends PostgresTestBase {
     }
 
     private PostgresConnection getConnection() {
+        Map<String, String> properties = new HashMap<>();
+        properties.put("hostname", customDatabase.getHost());
+        properties.put("port", String.valueOf(customDatabase.getDatabasePort()));
+        properties.put("user", customDatabase.getUsername());
+        properties.put("password", customDatabase.getPassword());
+        properties.put("dbname", customDatabase.getDatabaseName());
+        return createConnection(properties);
+    }
+
+    private PostgresConnection getConnection(UniqueDatabase customDatabase) {
         Map<String, String> properties = new HashMap<>();
         properties.put("hostname", customDatabase.getHost());
         properties.put("port", String.valueOf(customDatabase.getDatabasePort()));
