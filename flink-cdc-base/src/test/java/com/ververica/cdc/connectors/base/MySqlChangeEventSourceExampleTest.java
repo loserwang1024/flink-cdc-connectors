@@ -31,8 +31,14 @@ import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.util.CloseableIterator;
 
+import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
+
 import com.ververica.cdc.connectors.base.experimental.MySqlSourceBuilder;
+import com.ververica.cdc.connectors.base.experimental.MysqlPooledDataSourceFactory;
+import com.ververica.cdc.connectors.base.experimental.config.MySqlSourceConfig;
 import com.ververica.cdc.connectors.base.experimental.utils.MySqlConnectionUtils;
+import com.ververica.cdc.connectors.base.options.StartupOptions;
+import com.ververica.cdc.connectors.base.relational.connection.JdbcConnectionFactory;
 import com.ververica.cdc.connectors.base.source.IncrementalSource;
 import com.ververica.cdc.connectors.base.testutils.MySqlContainer;
 import com.ververica.cdc.connectors.base.testutils.MySqlVersion;
@@ -40,23 +46,18 @@ import com.ververica.cdc.connectors.base.testutils.UniqueDatabase;
 import com.ververica.cdc.debezium.JsonDebeziumDeserializationSchema;
 import com.ververica.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
 import io.debezium.connector.mysql.MySqlConnection;
+import io.debezium.jdbc.JdbcConfiguration;
 import io.debezium.jdbc.JdbcConnection;
-import org.junit.BeforeClass;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.lifecycle.Startables;
 
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -92,6 +93,57 @@ public class MySqlChangeEventSourceExampleTest {
 
     private final UniqueDatabase inventoryDatabase =
             new UniqueDatabase(MYSQL_CONTAINER, "inventory", "mysqluser", "mysqlpw");
+
+    @Test
+    public void testJdbcConnectionTest() throws SQLException {
+
+        JdbcConfiguration jdbcConfiguration =
+                JdbcConfiguration.create()
+                        .withHostname("testhost1")
+                        .withPort(8080)
+                        .withDatabase("test-database")
+                        .withUser("test-user")
+                        .withPassword("test-passwotd")
+                        .build();
+
+        // if this two configurations is not same, what will happens
+        MySqlSourceConfig mySqlSourceConfig =
+                new MySqlSourceConfig(
+                        StartupOptions.latest(),
+                        Lists.newArrayList(inventoryDatabase.getDatabaseName()),
+                        Lists.newArrayList(inventoryDatabase.getDatabaseName() + ".products"),
+                        1,
+                        1,
+                        1.00,
+                        2.00,
+                        false,
+                        false,
+                        new Properties(),
+                        jdbcConfiguration,
+                        "com.mysql.cj.jdbc.Driver",
+                        MYSQL_CONTAINER.getHost(),
+                        MYSQL_CONTAINER.getDatabasePort(),
+                        inventoryDatabase.getUsername(),
+                        inventoryDatabase.getPassword(),
+                        100,
+                        "UTC+8",
+                        Duration.ofSeconds(5),
+                        1,
+                        10);
+
+        JdbcConnection jdbc =
+                new JdbcConnection(
+                        jdbcConfiguration,
+                        new JdbcConnectionFactory(
+                                mySqlSourceConfig, new MysqlPooledDataSourceFactory()),
+                        "`",
+                        "`");
+
+        jdbc.connect();
+        Assert.assertTrue(jdbc.isConnected());
+        Assert.assertFalse(jdbc.username().equals(inventoryDatabase.getDatabaseName()));
+        Assert.assertFalse(jdbc.config().getHostname().equals(inventoryDatabase.getHost()));
+    }
 
     @Test
     @Ignore("Test ignored because it won't stop and is used for manual test")
