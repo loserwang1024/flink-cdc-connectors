@@ -110,3 +110,14 @@ CREATE TABLE user_info
     balance2  DECIMAL(18, 2),
     PRIMARY KEY (user_id)
 ) DEFAULT CHARSET=utf8;
+
+CREATE TABLE timestamp_types
+(
+    id VARCHAR(255) NOT NULL,
+    datetime3_c          DATETIME(3),
+    datetime6_c          DATETIME(6),
+    timestamp_c          TIMESTAMP,
+    PRIMARY KEY (id)
+) DEFAULT CHARSET=utf8;
+
+INSERT INTO timestamp_types values('1', '2020-07-17 18:00:22.123', '2020-07-17 18:00:22.123456','2020-07-17 18:00:22');

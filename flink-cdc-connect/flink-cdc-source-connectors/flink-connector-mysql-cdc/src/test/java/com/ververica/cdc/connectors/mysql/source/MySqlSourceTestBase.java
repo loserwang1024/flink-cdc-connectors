@@ -50,7 +50,8 @@ public abstract class MySqlSourceTestBase extends TestLogger {
     protected static final Logger LOG = LoggerFactory.getLogger(MySqlSourceTestBase.class);
 
     protected static final int DEFAULT_PARALLELISM = 4;
-    protected static final MySqlContainer MYSQL_CONTAINER = createMySqlContainer(MySqlVersion.V5_7);
+    protected static final MySqlContainer MYSQL_CONTAINER =
+            createMySqlContainerWithTimeZone(MySqlVersion.V5_7, "Asia/Shanghai");
 
     @Rule
     public final MiniClusterWithClientResource miniClusterResource =
@@ -78,6 +79,19 @@ public abstract class MySqlSourceTestBase extends TestLogger {
 
     protected static MySqlContainer createMySqlContainer(MySqlVersion version) {
         return createMySqlContainer(version, "docker/server-gtids/my.cnf");
+    }
+
+    protected static MySqlContainer createMySqlContainerWithTimeZone(
+            MySqlVersion version, String timeZone) {
+        return (MySqlContainer)
+                new MySqlContainer(version)
+                        .withConfigurationOverride("docker/server-gtids/my.cnf")
+                        .withSetupSQL("docker/setup.sql")
+                        .withDatabaseName("flink-test")
+                        .withUsername("flinkuser")
+                        .withPassword("flinkpw")
+                        .withTimezone(timeZone)
+                        .withLogConsumer(new Slf4jLogConsumer(LOG));
     }
 
     protected static MySqlContainer createMySqlContainer(MySqlVersion version, String configPath) {
