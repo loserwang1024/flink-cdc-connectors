@@ -247,6 +247,12 @@ public class PostgresSourceBuilder<T> {
         return this;
     }
 
+    /** whether to enable log backfill for each snapshot split. */
+    public PostgresSourceBuilder<T> backfillEnabled(boolean backfillEnabled) {
+        this.configFactory.backfillEnabled(backfillEnabled);
+        return this;
+    }
+
     /**
      * Build the {@link PostgresIncrementalSource}.
      *

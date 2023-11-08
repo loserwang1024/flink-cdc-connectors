@@ -34,6 +34,7 @@ public abstract class BaseSourceConfig implements SourceConfig {
     protected final double distributionFactorLower;
     protected final boolean includeSchemaChanges;
     protected final boolean closeIdleReaders;
+    protected final boolean backfillEnabled;
 
     // --------------------------------------------------------------------------------------------
     // Debezium Configurations
@@ -49,6 +50,7 @@ public abstract class BaseSourceConfig implements SourceConfig {
             double distributionFactorLower,
             boolean includeSchemaChanges,
             boolean closeIdleReaders,
+            boolean backfillEnabled,
             Properties dbzProperties,
             Configuration dbzConfiguration) {
         this.startupOptions = startupOptions;
@@ -58,6 +60,7 @@ public abstract class BaseSourceConfig implements SourceConfig {
         this.distributionFactorLower = distributionFactorLower;
         this.includeSchemaChanges = includeSchemaChanges;
         this.closeIdleReaders = closeIdleReaders;
+        this.backfillEnabled = backfillEnabled;
         this.dbzProperties = dbzProperties;
         this.dbzConfiguration = dbzConfiguration;
     }
@@ -101,5 +104,9 @@ public abstract class BaseSourceConfig implements SourceConfig {
 
     public Configuration getDbzConfiguration() {
         return Configuration.from(dbzProperties);
+    }
+
+    public boolean isBackfillEnabled() {
+        return backfillEnabled;
     }
 }

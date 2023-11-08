@@ -18,6 +18,7 @@ package com.ververica.cdc.connectors.postgres.source.fetch;
 
 import org.apache.flink.util.FlinkRuntimeException;
 
+import com.ververica.cdc.connectors.base.config.BaseSourceConfig;
 import com.ververica.cdc.connectors.base.relational.JdbcSourceEventDispatcher;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.SnapshotSplit;
@@ -106,7 +107,8 @@ public class PostgresScanFetchTask implements FetchTask<SourceSplitBase> {
                         ctx.getSnapshotChangeEventSourceMetrics(),
                         split,
                         ((PostgresSourceConfig) ctx.getSourceConfig()).getSlotNameForBackfillTask(),
-                        ctx.getPluginName());
+                        ctx.getPluginName(),
+                        ((BaseSourceConfig) ctx.getSourceConfig()).isBackfillEnabled());
 
         SnapshotSplitChangeEventSourceContext changeEventSourceContext =
                 new SnapshotSplitChangeEventSourceContext();
@@ -243,6 +245,8 @@ public class PostgresScanFetchTask implements FetchTask<SourceSplitBase> {
         private final String slotName;
         private final String pluginName;
 
+        private final boolean backfillEnabled;
+
         public PostgresSnapshotSplitReadTask(
                 PostgresConnection jdbcConnection,
                 PostgresReplicationConnection replicationConnection,
@@ -253,7 +257,8 @@ public class PostgresScanFetchTask implements FetchTask<SourceSplitBase> {
                 SnapshotProgressListener snapshotProgressListener,
                 SnapshotSplit snapshotSplit,
                 String slotName,
-                String pluginName) {
+                String pluginName,
+                boolean backfillEnabled) {
             super(connectorConfig, snapshotProgressListener);
             this.jdbcConnection = jdbcConnection;
             this.replicationConnection = replicationConnection;
@@ -266,6 +271,7 @@ public class PostgresScanFetchTask implements FetchTask<SourceSplitBase> {
             this.clock = Clock.SYSTEM;
             this.slotName = slotName;
             this.pluginName = pluginName;
+            this.backfillEnabled = backfillEnabled;
         }
 
         @Override
@@ -277,7 +283,12 @@ public class PostgresScanFetchTask implements FetchTask<SourceSplitBase> {
                 throws Exception {
             final PostgresSnapshotContext ctx = (PostgresSnapshotContext) snapshotContext;
             ctx.offset = offsetContext;
-            createSlotForBackFillReadTask();
+
+            if (backfillEnabled) {
+                // create slot here, because a slot can only consume wal log generated after its
+                // creation.
+                createSlotForBackFillReadTask();
+            }
             refreshSchema(databaseSchema, jdbcConnection, true);
             final PostgresOffset lowWatermark = currentOffset(jdbcConnection);
             LOG.info(
@@ -294,7 +305,9 @@ public class PostgresScanFetchTask implements FetchTask<SourceSplitBase> {
             LOG.info("Snapshot step 2 - Snapshotting data");
             createDataEvents(ctx, snapshotSplit.getTableId());
 
-            final PostgresOffset highWatermark = currentOffset(jdbcConnection);
+            // if skip backfill, set highWatermark = lowWatermark
+            final PostgresOffset highWatermark =
+                    backfillEnabled ? currentOffset(jdbcConnection) : lowWatermark;
             LOG.info(
                     "Snapshot step 3 - Determining high watermark {} for split {}",
                     highWatermark,

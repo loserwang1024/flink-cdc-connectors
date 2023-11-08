@@ -186,7 +186,8 @@ public class PostgresSourceITCase extends PostgresTestBase {
                     FailoverType.NONE,
                     FailoverPhase.NEVER,
                     new String[] {"customers_no_pk"},
-                    RestartStrategies.noRestart());
+                    RestartStrategies.noRestart(),
+                    true);
         } catch (Exception e) {
             assertTrue(
                     ExceptionUtils.findThrowableWithMessage(
@@ -196,6 +197,18 @@ public class PostgresSourceITCase extends PostgresTestBase {
                                             SCHEMA_NAME + ".customers_no_pk"))
                             .isPresent());
         }
+    }
+
+    @Test
+    public void testDisableBackfill() throws Exception {
+        testPostgresParallelSource(
+                DEFAULT_PARALLELISM,
+                DEFAULT_SCAN_STARTUP_MODE,
+                FailoverType.TM,
+                FailoverPhase.SNAPSHOT,
+                new String[] {"customers"},
+                RestartStrategies.fixedDelayRestart(1, 0),
+                false);
     }
 
     @Test
@@ -275,7 +288,8 @@ public class PostgresSourceITCase extends PostgresTestBase {
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
-                RestartStrategies.fixedDelayRestart(1, 0));
+                RestartStrategies.fixedDelayRestart(1, 0),
+                true);
     }
 
     private void testPostgresParallelSource(
@@ -284,7 +298,8 @@ public class PostgresSourceITCase extends PostgresTestBase {
             FailoverType failoverType,
             FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration)
+            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            boolean backfillEnabled)
             throws Exception {
         customDatabase.createAndInitialize();
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -313,7 +328,8 @@ public class PostgresSourceITCase extends PostgresTestBase {
                                 + " 'table-name' = '%s',"
                                 + " 'scan.startup.mode' = '%s',"
                                 + " 'scan.incremental.snapshot.chunk.size' = '100',"
-                                + " 'slot.name' = '%s'"
+                                + " 'slot.name' = '%s',"
+                                + " 'scan.incremental.snapshot.backfill.enabled' = '%s'"
                                 + ")",
                         customDatabase.getHost(),
                         customDatabase.getDatabasePort(),
@@ -323,7 +339,8 @@ public class PostgresSourceITCase extends PostgresTestBase {
                         SCHEMA_NAME,
                         getTableNameRegex(captureCustomerTables),
                         scanStartupMode,
-                        getSlotName());
+                        getSlotName(),
+                        backfillEnabled);
         tEnv.executeSql(sourceDDL);
         TableResult tableResult = tEnv.executeSql("select * from customers");
 

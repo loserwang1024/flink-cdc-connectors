@@ -68,7 +68,8 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
             Duration connectTimeout,
             int connectMaxRetries,
             int connectionPoolSize,
-            String chunkKeyColumn) {
+            String chunkKeyColumn,
+            boolean backfillEnabled) {
         super(
                 startupOptions,
                 splitSize,
@@ -77,6 +78,7 @@ public abstract class JdbcSourceConfig extends BaseSourceConfig {
                 distributionFactorLower,
                 includeSchemaChanges,
                 closeIdleReaders,
+                backfillEnabled,
                 dbzProperties,
                 dbzConfiguration);
         this.driverClassName = driverClassName;

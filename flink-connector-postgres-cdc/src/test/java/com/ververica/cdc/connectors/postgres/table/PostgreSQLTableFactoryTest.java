@@ -60,9 +60,7 @@ import static com.ververica.cdc.connectors.postgres.source.config.PostgresSource
 import static com.ververica.cdc.connectors.postgres.source.config.PostgresSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND;
 import static com.ververica.cdc.connectors.postgres.source.config.PostgresSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND;
 import static com.ververica.cdc.connectors.utils.AssertUtils.assertProducedTypeOfSourceFunction;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 /** Test for {@link PostgreSQLTableSource} created by {@link PostgreSQLTableFactory}. */
 public class PostgreSQLTableFactoryTest {
@@ -146,7 +144,8 @@ public class PostgreSQLTableFactoryTest {
                         HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.initial(),
                         null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -157,6 +156,7 @@ public class PostgreSQLTableFactoryTest {
         options.put("decoding.plugin.name", "wal2json");
         options.put("debezium.snapshot.mode", "never");
         options.put("changelog-mode", "upsert");
+        options.put("scan.incremental.snapshot.backfill.enabled", "false");
 
         DynamicTableSource actualSource = createTableSource(options);
         Properties dbzProperties = new Properties();
@@ -187,7 +187,8 @@ public class PostgreSQLTableFactoryTest {
                         HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.initial(),
                         null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        false);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -228,7 +229,8 @@ public class PostgreSQLTableFactoryTest {
                         HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.initial(),
                         null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        true);
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys =
                 Arrays.asList("op_ts", "database_name", "schema_name", "table_name");
@@ -279,7 +281,8 @@ public class PostgreSQLTableFactoryTest {
                         HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.initial(),
                         null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -320,7 +323,8 @@ public class PostgreSQLTableFactoryTest {
                         HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.latest(),
                         null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT);
+                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
+                        true);
         assertEquals(expectedSource, actualSource);
     }
 

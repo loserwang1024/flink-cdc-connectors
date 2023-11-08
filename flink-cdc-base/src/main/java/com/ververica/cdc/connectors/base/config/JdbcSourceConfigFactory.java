@@ -56,6 +56,7 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     protected int connectionPoolSize = JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue();
     protected Properties dbzProperties;
     protected String chunkKeyColumn;
+    protected boolean backfillEnabled;
 
     /** Integer port number of the database server. */
     public JdbcSourceConfigFactory hostname(String hostname) {
@@ -223,6 +224,10 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     public JdbcSourceConfigFactory closeIdleReaders(boolean closeIdleReaders) {
         this.closeIdleReaders = closeIdleReaders;
         return this;
+    }
+
+    public void backfillEnabled(boolean backfillEnabled) {
+        this.backfillEnabled = backfillEnabled;
     }
 
     @Override
