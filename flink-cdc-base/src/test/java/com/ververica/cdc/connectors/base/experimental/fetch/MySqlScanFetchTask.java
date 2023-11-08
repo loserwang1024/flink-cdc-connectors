@@ -101,7 +101,8 @@ public class MySqlScanFetchTask implements FetchTask<SourceSplitBase> {
                         sourceFetchContext.getDatabaseSchema(),
                         sourceFetchContext.getConnection(),
                         sourceFetchContext.getDispatcher(),
-                        split);
+                        split,
+                        sourceFetchContext.getSourceConfig().isBackfillEnabled());
         SnapshotSplitChangeEventSourceContext changeEventSourceContext =
                 new SnapshotSplitChangeEventSourceContext();
         SnapshotResult<MySqlOffsetContext> snapshotResult =
@@ -203,6 +204,7 @@ public class MySqlScanFetchTask implements FetchTask<SourceSplitBase> {
         private final SnapshotSplit snapshotSplit;
         private final MySqlOffsetContext offsetContext;
         private final SnapshotProgressListener<MySqlPartition> snapshotProgressListener;
+        private final boolean backfillEnabled;
 
         public MySqlSnapshotSplitReadTask(
                 MySqlConnectorConfig connectorConfig,
@@ -211,7 +213,8 @@ public class MySqlScanFetchTask implements FetchTask<SourceSplitBase> {
                 MySqlDatabaseSchema databaseSchema,
                 MySqlConnection jdbcConnection,
                 JdbcSourceEventDispatcher<MySqlPartition> dispatcher,
-                SnapshotSplit snapshotSplit) {
+                SnapshotSplit snapshotSplit,
+                boolean backfillEnabled) {
             super(connectorConfig, snapshotProgressListener);
             this.offsetContext = previousOffset;
             this.connectorConfig = connectorConfig;
@@ -221,6 +224,7 @@ public class MySqlScanFetchTask implements FetchTask<SourceSplitBase> {
             this.clock = Clock.SYSTEM;
             this.snapshotSplit = snapshotSplit;
             this.snapshotProgressListener = snapshotProgressListener;
+            this.backfillEnabled = backfillEnabled;
         }
 
         @Override
@@ -272,7 +276,9 @@ public class MySqlScanFetchTask implements FetchTask<SourceSplitBase> {
             LOG.info("Snapshot step 2 - Snapshotting data");
             createDataEvents(ctx, snapshotSplit.getTableId());
 
-            final BinlogOffset highWatermark = currentBinlogOffset(jdbcConnection);
+            // if skip backfill, set highWatermark = lowWatermark
+            final BinlogOffset highWatermark =
+                    backfillEnabled ? currentBinlogOffset(jdbcConnection) : lowWatermark;
             LOG.info(
                     "Snapshot step 3 - Determining high watermark {} for split {}",
                     highWatermark,

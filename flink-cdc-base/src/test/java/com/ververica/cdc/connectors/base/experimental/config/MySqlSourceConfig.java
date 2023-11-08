@@ -57,7 +57,8 @@ public class MySqlSourceConfig extends JdbcSourceConfig {
             String serverTimeZone,
             Duration connectTimeout,
             int connectMaxRetries,
-            int connectionPoolSize) {
+            int connectionPoolSize,
+            boolean backfillEnabled) {
         super(
                 startupOptions,
                 databaseList,
@@ -81,7 +82,8 @@ public class MySqlSourceConfig extends JdbcSourceConfig {
                 connectTimeout,
                 connectMaxRetries,
                 connectionPoolSize,
-                null);
+                null,
+                backfillEnabled);
     }
 
     @Override
