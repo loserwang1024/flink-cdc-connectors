@@ -78,6 +78,8 @@ public class MySqlSourceConfigFactory implements Serializable {
     private Properties dbzProperties;
     private Map<ObjectPath, String> chunkKeyColumns = new HashMap<>();
 
+    private boolean backfillEnabled;
+
     public MySqlSourceConfigFactory hostname(String hostname) {
         this.hostname = hostname;
         return this;
@@ -288,6 +290,11 @@ public class MySqlSourceConfigFactory implements Serializable {
         return createConfig(subtaskId, "mysql_binlog_source");
     }
 
+    /** Wether to enable log backfill */
+    public void backfillEnabled(boolean backfillEnabled) {
+        this.backfillEnabled = backfillEnabled;
+    }
+
     /** Creates a new {@link MySqlSourceConfig} for the given subtask {@code subtaskId}. */
     public MySqlSourceConfig createConfig(int subtaskId, String serverName) {
         checkSupportCheckpointsAfterTasksFinished(closeIdleReaders);
@@ -368,6 +375,7 @@ public class MySqlSourceConfigFactory implements Serializable {
                 closeIdleReaders,
                 props,
                 jdbcProperties,
-                chunkKeyColumns);
+                chunkKeyColumns,
+                backfillEnabled);
     }
 }

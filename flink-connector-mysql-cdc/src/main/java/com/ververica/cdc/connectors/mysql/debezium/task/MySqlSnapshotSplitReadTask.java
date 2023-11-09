@@ -77,6 +77,7 @@ public class MySqlSnapshotSplitReadTask
     private final TopicSelector<TableId> topicSelector;
     private final EventDispatcher.SnapshotReceiver<MySqlPartition> snapshotReceiver;
     private final SnapshotChangeEventSourceMetrics<MySqlPartition> snapshotChangeEventSourceMetrics;
+    private final boolean backfillEnabled;
 
     public MySqlSnapshotSplitReadTask(
             MySqlConnectorConfig connectorConfig,
@@ -87,7 +88,7 @@ public class MySqlSnapshotSplitReadTask
             TopicSelector<TableId> topicSelector,
             EventDispatcher.SnapshotReceiver<MySqlPartition> snapshotReceiver,
             Clock clock,
-            MySqlSnapshotSplit snapshotSplit) {
+            MySqlSnapshotSplit snapshotSplit, boolean backfillEnabled) {
         super(connectorConfig, snapshotChangeEventSourceMetrics);
         this.connectorConfig = connectorConfig;
         this.databaseSchema = databaseSchema;
@@ -98,6 +99,7 @@ public class MySqlSnapshotSplitReadTask
         this.topicSelector = topicSelector;
         this.snapshotReceiver = snapshotReceiver;
         this.snapshotChangeEventSourceMetrics = snapshotChangeEventSourceMetrics;
+        this.backfillEnabled = backfillEnabled;
     }
 
     @Override
@@ -152,7 +154,8 @@ public class MySqlSnapshotSplitReadTask
         LOG.info("Snapshot step 2 - Snapshotting data");
         createDataEvents(ctx, snapshotSplit.getTableId());
 
-        final BinlogOffset highWatermark = currentBinlogOffset(jdbcConnection);
+        // if skip backfill, set highWatermark = lowWatermark
+        final BinlogOffset highWatermark = backfillEnabled?currentBinlogOffset(jdbcConnection):lowWatermark;
         LOG.info(
                 "Snapshot step 3 - Determining high watermark {} for split {}",
                 highWatermark,

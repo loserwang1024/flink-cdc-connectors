@@ -252,6 +252,12 @@ public class MySqlSourceBuilder<T> {
         return this;
     }
 
+    /** Wether to enable log backfill */
+    public MySqlSourceBuilder<T> backfillEnabled(boolean backfillEnabled) {
+        this.configFactory.backfillEnabled(backfillEnabled);
+        return this;
+    }
+
     /**
      * Build the {@link MySqlSource}.
      *

@@ -124,7 +124,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -169,7 +169,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        "testCol");
+                        "testCol", true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -210,7 +210,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -249,7 +249,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -297,7 +297,7 @@ public class MySqlTableSourceFactoryTest {
                         true,
                         jdbcProperties,
                         Duration.ofMillis(15213),
-                        "testCol");
+                        "testCol", true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -342,7 +342,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -379,7 +379,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -417,7 +417,8 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null,
+                        true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -456,7 +457,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -493,7 +494,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         assertEquals(expectedSource, actualSource);
     }
 
@@ -535,7 +536,7 @@ public class MySqlTableSourceFactoryTest {
                         false,
                         new Properties(),
                         HEARTBEAT_INTERVAL.defaultValue(),
-                        null);
+                        null, true);
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys = Arrays.asList("op_ts", "database_name");
 

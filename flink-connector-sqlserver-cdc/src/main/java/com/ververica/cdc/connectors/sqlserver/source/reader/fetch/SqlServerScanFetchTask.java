@@ -87,7 +87,8 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                         sourceFetchContext.getConnection(),
                         sourceFetchContext.getDispatcher(),
                         sourceFetchContext.getSnapshotReceiver(),
-                        split);
+                        split,
+                        sourceFetchContext.getSourceConfig().isBackfillEnabled());
         SnapshotSplitChangeEventSourceContext changeEventSourceContext =
                 new SnapshotSplitChangeEventSourceContext();
         SnapshotResult<SqlServerOffsetContext> snapshotResult =
@@ -218,6 +219,8 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
         private final SnapshotProgressListener<SqlServerPartition> snapshotProgressListener;
         private final EventDispatcher.SnapshotReceiver<SqlServerPartition> snapshotReceiver;
 
+        private final boolean backfillEnabled;
+
         public SqlServerSnapshotSplitReadTask(
                 SqlServerConnectorConfig connectorConfig,
                 SqlServerOffsetContext previousOffset,
@@ -226,7 +229,8 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
                 SqlServerConnection jdbcConnection,
                 JdbcSourceEventDispatcher<SqlServerPartition> dispatcher,
                 EventDispatcher.SnapshotReceiver<SqlServerPartition> snapshotReceiver,
-                SnapshotSplit snapshotSplit) {
+                SnapshotSplit snapshotSplit,
+                boolean backfillEnabled) {
             super(connectorConfig, snapshotProgressListener);
             this.offsetContext = previousOffset;
             this.connectorConfig = connectorConfig;
@@ -237,6 +241,7 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
             this.snapshotSplit = snapshotSplit;
             this.snapshotProgressListener = snapshotProgressListener;
             this.snapshotReceiver = snapshotReceiver;
+            this.backfillEnabled = backfillEnabled;
         }
 
         @Override
@@ -288,7 +293,9 @@ public class SqlServerScanFetchTask implements FetchTask<SourceSplitBase> {
             LOG.info("Snapshot step 2 - Snapshotting data");
             createDataEvents(ctx, snapshotSplit.getTableId());
 
-            final LsnOffset highWatermark = currentLsn(jdbcConnection);
+            // if skip backfill, set highWatermark = lowWatermark
+            final LsnOffset highWatermark =
+                    backfillEnabled ? currentLsn(jdbcConnection) : lowWatermark;
             LOG.info(
                     "Snapshot step 3 - Determining high watermark {} for split {}",
                     highWatermark,

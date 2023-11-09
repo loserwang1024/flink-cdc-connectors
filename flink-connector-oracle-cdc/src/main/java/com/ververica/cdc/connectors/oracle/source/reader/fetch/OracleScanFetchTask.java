@@ -101,7 +101,8 @@ public class OracleScanFetchTask implements FetchTask<SourceSplitBase> {
                         sourceFetchContext.getDatabaseSchema(),
                         sourceFetchContext.getConnection(),
                         sourceFetchContext.getDispatcher(),
-                        split);
+                        split,
+                        sourceFetchContext.getSourceConfig().isBackfillEnabled());
         SnapshotSplitChangeEventSourceContext changeEventSourceContext =
                 new SnapshotSplitChangeEventSourceContext();
         SnapshotResult<OracleOffsetContext> snapshotResult =
@@ -213,6 +214,7 @@ public class OracleScanFetchTask implements FetchTask<SourceSplitBase> {
         private final SnapshotSplit snapshotSplit;
         private final OracleOffsetContext offsetContext;
         private final SnapshotProgressListener<OraclePartition> snapshotProgressListener;
+        private final boolean backfillEnabled;
 
         public OracleSnapshotSplitReadTask(
                 OracleConnectorConfig connectorConfig,
@@ -221,7 +223,8 @@ public class OracleScanFetchTask implements FetchTask<SourceSplitBase> {
                 OracleDatabaseSchema databaseSchema,
                 OracleConnection jdbcConnection,
                 JdbcSourceEventDispatcher<OraclePartition> dispatcher,
-                SnapshotSplit snapshotSplit) {
+                SnapshotSplit snapshotSplit,
+                boolean backfillEnabled) {
             super(connectorConfig, snapshotProgressListener);
             this.offsetContext = previousOffset;
             this.connectorConfig = connectorConfig;
@@ -231,6 +234,7 @@ public class OracleScanFetchTask implements FetchTask<SourceSplitBase> {
             this.clock = Clock.SYSTEM;
             this.snapshotSplit = snapshotSplit;
             this.snapshotProgressListener = snapshotProgressListener;
+            this.backfillEnabled = backfillEnabled;
         }
 
         @Override
@@ -282,7 +286,9 @@ public class OracleScanFetchTask implements FetchTask<SourceSplitBase> {
             LOG.info("Snapshot step 2 - Snapshotting data");
             createDataEvents(ctx, snapshotSplit.getTableId());
 
-            final RedoLogOffset highWatermark = currentRedoLogOffset(jdbcConnection);
+            // if skip backfill, set highWatermark = lowWatermark
+            final RedoLogOffset highWatermark =
+                    backfillEnabled ? currentRedoLogOffset(jdbcConnection) : lowWatermark;
             LOG.info(
                     "Snapshot step 3 - Determining high watermark {} for split {}",
                     highWatermark,

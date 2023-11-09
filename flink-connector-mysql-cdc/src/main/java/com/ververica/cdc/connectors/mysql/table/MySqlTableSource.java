@@ -92,6 +92,8 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
     /** Metadata that is appended at the end of a physical source row. */
     protected List<String> metadataKeys;
 
+    protected boolean backfillEnabled;
+
     public MySqlTableSource(
             ResolvedSchema physicalSchema,
             int port,
@@ -117,7 +119,7 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
             boolean closeIdleReaders,
             Properties jdbcProperties,
             Duration heartbeatInterval,
-            @Nullable String chunkKeyColumn) {
+            @Nullable String chunkKeyColumn, boolean backfillEnabled) {
         this.physicalSchema = physicalSchema;
         this.port = port;
         this.hostname = checkNotNull(hostname);
@@ -146,6 +148,7 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
         this.metadataKeys = Collections.emptyList();
         this.heartbeatInterval = heartbeatInterval;
         this.chunkKeyColumn = chunkKeyColumn;
+        this.backfillEnabled = backfillEnabled;
     }
 
     @Override
@@ -200,6 +203,7 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                             .jdbcProperties(jdbcProperties)
                             .heartbeatInterval(heartbeatInterval)
                             .chunkKeyColumn(new ObjectPath(database, tableName), chunkKeyColumn)
+                            .backfillEnabled(backfillEnabled)
                             .build();
             return SourceProvider.of(parallelSource);
         } else {
@@ -280,7 +284,8 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                         closeIdleReaders,
                         jdbcProperties,
                         heartbeatInterval,
-                        chunkKeyColumn);
+                        chunkKeyColumn,
+                        backfillEnabled);
         source.metadataKeys = metadataKeys;
         source.producedDataType = producedDataType;
         return source;
@@ -321,7 +326,8 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                 && Objects.equals(metadataKeys, that.metadataKeys)
                 && Objects.equals(jdbcProperties, that.jdbcProperties)
                 && Objects.equals(heartbeatInterval, that.heartbeatInterval)
-                && Objects.equals(chunkKeyColumn, that.chunkKeyColumn);
+                && Objects.equals(chunkKeyColumn, that.chunkKeyColumn)
+                && Objects.equals(backfillEnabled, that.backfillEnabled);
     }
 
     @Override
@@ -353,7 +359,8 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                 closeIdleReaders,
                 jdbcProperties,
                 heartbeatInterval,
-                chunkKeyColumn);
+                chunkKeyColumn,
+                backfillEnabled);
     }
 
     @Override

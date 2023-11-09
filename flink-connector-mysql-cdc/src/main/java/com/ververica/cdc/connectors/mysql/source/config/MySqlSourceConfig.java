@@ -61,6 +61,8 @@ public class MySqlSourceConfig implements Serializable {
     private final Properties jdbcProperties;
     private final Map<ObjectPath, String> chunkKeyColumns;
 
+    private final boolean backfillEnabled;
+
     // --------------------------------------------------------------------------------------------
     // Debezium Configurations
     // --------------------------------------------------------------------------------------------
@@ -91,7 +93,7 @@ public class MySqlSourceConfig implements Serializable {
             boolean closeIdleReaders,
             Properties dbzProperties,
             Properties jdbcProperties,
-            Map<ObjectPath, String> chunkKeyColumns) {
+            Map<ObjectPath, String> chunkKeyColumns, boolean backfillEnabled) {
         this.hostname = checkNotNull(hostname);
         this.port = port;
         this.username = checkNotNull(username);
@@ -117,6 +119,7 @@ public class MySqlSourceConfig implements Serializable {
         this.dbzMySqlConfig = new MySqlConnectorConfig(dbzConfiguration);
         this.jdbcProperties = jdbcProperties;
         this.chunkKeyColumns = chunkKeyColumns;
+        this.backfillEnabled = backfillEnabled;
     }
 
     public String getHostname() {
@@ -222,5 +225,9 @@ public class MySqlSourceConfig implements Serializable {
 
     public Map<ObjectPath, String> getChunkKeyColumns() {
         return chunkKeyColumns;
+    }
+
+    public boolean isBackfillEnabled() {
+        return backfillEnabled;
     }
 }
