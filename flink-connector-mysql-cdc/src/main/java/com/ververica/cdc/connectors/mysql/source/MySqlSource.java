@@ -18,6 +18,7 @@ package com.ververica.cdc.connectors.mysql.source;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.connector.source.Source;
@@ -52,6 +53,7 @@ import com.ververica.cdc.connectors.mysql.source.reader.MySqlSplitReader;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplit;
 import com.ververica.cdc.connectors.mysql.source.split.MySqlSplitSerializer;
 import com.ververica.cdc.connectors.mysql.source.split.SourceRecords;
+import com.ververica.cdc.connectors.mysql.source.utils.hooks.SnapshotPhaseHooks;
 import com.ververica.cdc.connectors.mysql.table.StartupMode;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
 import io.debezium.jdbc.JdbcConnection;
@@ -100,6 +102,12 @@ public class MySqlSource<T>
 
     private final MySqlSourceConfigFactory configFactory;
     private final DebeziumDeserializationSchema<T> deserializationSchema;
+
+    // Actions to perform during the snapshot phase.
+    // This field is introduced for testing purpose, for example testing if changes made in the
+    // snapshot phase are correctly backfilled into the snapshot by registering a pre high watermark
+    // hook for generating changes.
+    private SnapshotPhaseHooks snapshotHooks = SnapshotPhaseHooks.empty();
 
     /**
      * Get a MySqlParallelSourceBuilder to build a {@link MySqlSource}.
@@ -150,7 +158,8 @@ public class MySqlSource<T>
                         new MySqlSplitReader(
                                 sourceConfig,
                                 readerContext.getIndexOfSubtask(),
-                                mySqlSourceReaderContext);
+                                mySqlSourceReaderContext,
+                                snapshotHooks);
         return new MySqlSourceReader<>(
                 elementsQueue,
                 splitReaderSupplier,
@@ -229,5 +238,10 @@ public class MySqlSource<T>
     @Override
     public TypeInformation<T> getProducedType() {
         return deserializationSchema.getProducedType();
+    }
+
+    @VisibleForTesting
+    public void setSnapshotHooks(SnapshotPhaseHooks snapshotHooks) {
+        this.snapshotHooks = snapshotHooks;
     }
 }
