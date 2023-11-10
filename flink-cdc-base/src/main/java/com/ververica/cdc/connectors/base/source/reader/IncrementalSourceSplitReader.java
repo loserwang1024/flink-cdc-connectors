@@ -16,6 +16,8 @@
 
 package com.ververica.cdc.connectors.base.source.reader;
 
+import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
+import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
@@ -57,12 +59,20 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
     private final DataSourceDialect<C> dataSourceDialect;
     private final C sourceConfig;
 
+    private final SnapshotPhaseHooks snapshotHooks;
+
     public IncrementalSourceSplitReader(
-            int subtaskId, DataSourceDialect<C> dataSourceDialect, C sourceConfig) {
+            int subtaskId, DataSourceDialect<C> dataSourceDialect, C sourceConfig, SnapshotPhaseHooks snapshotHooks) {
         this.subtaskId = subtaskId;
         this.splits = new ArrayDeque<>();
         this.dataSourceDialect = dataSourceDialect;
         this.sourceConfig = sourceConfig;
+        this.snapshotHooks = snapshotHooks;
+    }
+
+    public IncrementalSourceSplitReader(
+            int subtaskId, DataSourceDialect<C> dataSourceDialect, C sourceConfig) {
+        this(subtaskId, dataSourceDialect, sourceConfig, SnapshotPhaseHooks.empty());
     }
 
     @Override
@@ -122,7 +132,7 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
                 if (currentFetcher == null) {
                     final FetchTask.Context taskContext =
                             dataSourceDialect.createFetchTaskContext(nextSplit, sourceConfig);
-                    currentFetcher = new IncrementalSourceScanFetcher(taskContext, subtaskId);
+                    currentFetcher = new IncrementalSourceScanFetcher(taskContext, subtaskId, snapshotHooks);
                 }
             } else {
                 // point from snapshot split to stream split

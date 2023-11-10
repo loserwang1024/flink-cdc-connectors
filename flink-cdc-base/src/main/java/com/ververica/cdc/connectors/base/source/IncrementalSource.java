@@ -16,7 +16,9 @@
 
 package com.ververica.cdc.connectors.base.source;
 
+import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.connector.source.Source;
@@ -73,6 +75,12 @@ public class IncrementalSource<T, C extends SourceConfig>
     protected final DebeziumDeserializationSchema<T> deserializationSchema;
     protected final SourceSplitSerializer sourceSplitSerializer;
 
+    // Actions to perform during the snapshot phase.
+    // This field is introduced for testing purpose, for example testing if changes made in the
+    // snapshot phase are correctly backfilled into the snapshot by registering a pre high watermark
+    // hook for generating changes.
+    private SnapshotPhaseHooks snapshotHooks = SnapshotPhaseHooks.empty();
+
     public IncrementalSource(
             SourceConfig.Factory<C> configFactory,
             DebeziumDeserializationSchema<T> deserializationSchema,
@@ -111,7 +119,7 @@ public class IncrementalSource<T, C extends SourceConfig>
         Supplier<IncrementalSourceSplitReader<C>> splitReaderSupplier =
                 () ->
                         new IncrementalSourceSplitReader<>(
-                                readerContext.getIndexOfSubtask(), dataSourceDialect, sourceConfig);
+                                readerContext.getIndexOfSubtask(), dataSourceDialect, sourceConfig,  snapshotHooks);
         return new IncrementalSourceReader<>(
                 elementsQueue,
                 splitReaderSupplier,
@@ -204,5 +212,10 @@ public class IncrementalSource<T, C extends SourceConfig>
                 sourceReaderMetrics,
                 sourceConfig.isIncludeSchemaChanges(),
                 offsetFactory);
+    }
+
+    @VisibleForTesting
+    public void setSnapshotHooks(SnapshotPhaseHooks snapshotHooks) {
+        this.snapshotHooks = snapshotHooks;
     }
 }

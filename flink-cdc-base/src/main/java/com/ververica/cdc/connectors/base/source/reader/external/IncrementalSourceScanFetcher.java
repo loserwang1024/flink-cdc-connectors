@@ -16,6 +16,7 @@
 
 package com.ververica.cdc.connectors.base.source.reader.external;
 
+import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -68,9 +69,11 @@ public class IncrementalSourceScanFetcher implements Fetcher<SourceRecords, Sour
     private FetchTask<SourceSplitBase> snapshotSplitReadTask;
     private SnapshotSplit currentSnapshotSplit;
 
+    private final SnapshotPhaseHooks hooks;
+
     private static final long READER_CLOSE_TIMEOUT_SECONDS = 30L;
 
-    public IncrementalSourceScanFetcher(FetchTask.Context taskContext, int subtaskId) {
+    public IncrementalSourceScanFetcher(FetchTask.Context taskContext, int subtaskId, SnapshotPhaseHooks hooks) {
         this.taskContext = taskContext;
         ThreadFactory threadFactory =
                 new ThreadFactoryBuilder()
@@ -81,6 +84,7 @@ public class IncrementalSourceScanFetcher implements Fetcher<SourceRecords, Sour
         this.executorService = Executors.newSingleThreadExecutor(threadFactory);
         this.hasNextElement = new AtomicBoolean(false);
         this.reachEnd = new AtomicBoolean(false);
+        this.hooks = hooks;
     }
 
     @Override
