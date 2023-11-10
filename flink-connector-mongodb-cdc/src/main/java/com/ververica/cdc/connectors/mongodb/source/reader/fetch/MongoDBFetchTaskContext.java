@@ -91,7 +91,7 @@ public class MongoDBFetchTaskContext implements FetchTask.Context {
         return sourceConfig;
     }
 
-    public MongoDBDialect getDialect() {
+    public MongoDBDialect getDataSourceDialect() {
         return dialect;
     }
 
