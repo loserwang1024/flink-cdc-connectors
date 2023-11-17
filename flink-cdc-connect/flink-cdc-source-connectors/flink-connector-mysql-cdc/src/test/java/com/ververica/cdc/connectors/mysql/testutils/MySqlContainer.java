@@ -42,6 +42,8 @@ public class MySqlContainer extends JdbcDatabaseContainer {
     private String username = "test";
     private String password = "test";
 
+    private String timezone = null;
+
     public MySqlContainer() {
         this(MySqlVersion.V5_7);
     }
@@ -68,6 +70,7 @@ public class MySqlContainer extends JdbcDatabaseContainer {
 
         addEnv("MYSQL_DATABASE", databaseName);
         addEnv("MYSQL_USER", username);
+
         if (password != null && !password.isEmpty()) {
             addEnv("MYSQL_PASSWORD", password);
             addEnv("MYSQL_ROOT_PASSWORD", password);
@@ -76,6 +79,10 @@ public class MySqlContainer extends JdbcDatabaseContainer {
         } else {
             throw new ContainerLaunchException(
                     "Empty password can be used only with the root user");
+        }
+
+        if (timezone != null) {
+            addEnv("TZ", timezone);
         }
         setStartupAttempts(3);
     }
@@ -141,6 +148,10 @@ public class MySqlContainer extends JdbcDatabaseContainer {
         return password;
     }
 
+    public String getTimezone() {
+        return timezone;
+    }
+
     @Override
     protected String getTestQueryString() {
         return "SELECT 1";
@@ -173,6 +184,11 @@ public class MySqlContainer extends JdbcDatabaseContainer {
     @Override
     public MySqlContainer withPassword(final String password) {
         this.password = password;
+        return this;
+    }
+
+    public MySqlContainer withTimezone(String timezone) {
+        this.timezone = timezone;
         return this;
     }
 }

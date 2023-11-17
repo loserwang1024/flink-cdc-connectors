@@ -84,6 +84,9 @@ public class MySqlConnectorITCase extends MySqlSourceTestBase {
     private static final MySqlContainer MYSQL8_CONTAINER =
             createMySqlContainer(MySqlVersion.V8_0, "docker/server-gtids/expire-seconds/my.cnf");
 
+    protected static final MySqlContainer MYSQL57_UTC8_CONTAINER =
+            createMySqlContainerWithTimeZone(MySqlVersion.V5_7, "Asia/Shanghai");
+
     private final UniqueDatabase inventoryDatabase =
             new UniqueDatabase(MYSQL_CONTAINER, "inventory", TEST_USER, TEST_PASSWORD);
 
@@ -92,6 +95,9 @@ public class MySqlConnectorITCase extends MySqlSourceTestBase {
     private final UniqueDatabase fullTypesMySql8Database =
             new UniqueDatabase(
                     MYSQL8_CONTAINER, "column_type_test_mysql8", TEST_USER, TEST_PASSWORD);
+
+    private final UniqueDatabase fullTypesMySql57UTC8Database =
+            new UniqueDatabase(MYSQL_CONTAINER, "column_type_test", TEST_USER, TEST_PASSWORD);
 
     private final UniqueDatabase customerDatabase =
             new UniqueDatabase(MYSQL_CONTAINER, "customer", TEST_USER, TEST_PASSWORD);
@@ -439,7 +445,7 @@ public class MySqlConnectorITCase extends MySqlSourceTestBase {
                                 + " 'table-name' = '%s',"
                                 + " 'scan.incremental.snapshot.enabled' = '%s',"
                                 + " 'server-id' = '%s',"
-                                + " 'server-time-zone' = 'UTC',"
+                                + " 'server-time-zone' = 'UTC+8:00',"
                                 + " 'scan.incremental.snapshot.chunk.size' = '%s'"
                                 + ")",
                         MYSQL_CONTAINER.getHost(),
@@ -507,6 +513,53 @@ public class MySqlConnectorITCase extends MySqlSourceTestBase {
     @Test
     public void testMySql8AllDataTypes() throws Throwable {
         testAllDataTypes(MYSQL8_CONTAINER, fullTypesMySql8Database);
+    }
+
+    @Test
+    public void testTimestamp() throws Throwable {
+        Startables.deepStart(Stream.of(MYSQL57_UTC8_CONTAINER)).join();
+        fullTypesMySql57UTC8Database.createAndInitialize();
+        String sourceDDL =
+                String.format(
+                        "CREATE TABLE timestamps (\n"
+                                + "    `id` STRING NOT NULL,\n"
+                                + "    datetime3_c TIMESTAMP(3),\n"
+                                + "    datetime6_c TIMESTAMP(6),\n"
+                                + "    timestamp_c TIMESTAMP(3),\n"
+                                + "    primary key (`id`) not enforced"
+                                + ") WITH ("
+                                + " 'connector' = 'mysql-cdc',"
+                                + " 'hostname' = '%s',"
+                                + " 'port' = '%s',"
+                                + " 'username' = '%s',"
+                                + " 'password' = '%s',"
+                                + " 'database-name' = '%s',"
+                                + " 'table-name' = '%s',"
+                                + " 'scan.incremental.snapshot.enabled' = '%s',"
+                                + " 'server-id' = '%s',"
+                                + " 'server-time-zone' = 'UTC+8',"
+                                + " 'scan.incremental.snapshot.chunk.size' = '%s'"
+                                + ")",
+                        MYSQL57_UTC8_CONTAINER.getHost(),
+                        MYSQL57_UTC8_CONTAINER.getDatabasePort(),
+                        fullTypesMySql57Database.getUsername(),
+                        fullTypesMySql57Database.getPassword(),
+                        fullTypesMySql57Database.getDatabaseName(),
+                        "timestamp_types",
+                        incrementalSnapshot,
+                        getServerId(),
+                        getSplitSize());
+        tEnv.executeSql(sourceDDL);
+        TableResult tableResult = tEnv.executeSql("select * from timestamps");
+        CloseableIterator<Row> iterator = tableResult.collect();
+        waitForSnapshotStarted(iterator);
+        String[] expected =
+                new String[] {
+                    "+I[1, 2020-07-17T18:00:22.123, 2020-07-17T18:00:22.123456, 2020-07-17T18:00:22]"
+                };
+        assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
+        tableResult.getJobClient().get().cancel().get();
+        MYSQL57_UTC8_CONTAINER.stop();
     }
 
     public void testAllDataTypes(MySqlContainer mySqlContainer, UniqueDatabase database)
