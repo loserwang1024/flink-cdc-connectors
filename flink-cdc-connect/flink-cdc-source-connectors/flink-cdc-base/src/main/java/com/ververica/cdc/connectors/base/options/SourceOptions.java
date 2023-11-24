@@ -121,4 +121,12 @@ public class SourceOptions {
                             "Whether to close idle readers at the end of the snapshot phase. This feature depends on "
                                     + "FLIP-147: Support Checkpoints After Tasks Finished. The flink version is required to be "
                                     + "greater than or equal to 1.14 when enabling this feature.");
+
+    @Experimental
+    public static final ConfigOption<Boolean> SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP =
+            ConfigOptions.key("scan.incremental.snapshot.backfill.skip")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            "Whether to backfill the log for each snapshot split in the snapshot phase. Enabling backfill log can provide exactly once semantics, otherwise only provides at-least once semantics. The default action is to backfill log in snapshot phase.");
 }
