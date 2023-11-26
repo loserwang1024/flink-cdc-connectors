@@ -243,6 +243,16 @@ public class MongoDBSourceBuilder<T> {
     }
 
     /**
+     * Whether to backfill the log for each snapshot split in the snapshot phase. Enabling backfill
+     * log can provide exactly once semantics, otherwise only provides at-least once semantics. The
+     * default action is to backfill log in snapshot phase.");
+     */
+    public MongoDBSourceBuilder<T> skipSnapshotBackfill(boolean skipSnapshotBackfill) {
+        this.configFactory.skipSnapshotBackfill(skipSnapshotBackfill);
+        return this;
+    }
+
+    /**
      * Build the {@link MongoDBSource}.
      *
      * @return a MongoDBParallelSource with the settings made for this builder.
