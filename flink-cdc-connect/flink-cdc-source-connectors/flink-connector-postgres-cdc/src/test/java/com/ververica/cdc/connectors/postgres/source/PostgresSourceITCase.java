@@ -324,7 +324,7 @@ public class PostgresSourceITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testEnablefillWithPreHighWaterMark() throws Exception {
+    public void testEnableBackfillWithPreHighWaterMark() throws Exception {
         if (scanStartupMode != DEFAULT_SCAN_STARTUP_MODE) {
             return;
         }
@@ -360,7 +360,7 @@ public class PostgresSourceITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testEnablefillWithPostLowWaterMark() throws Exception {
+    public void testEnableBackfillWithPostLowWaterMark() throws Exception {
         if (scanStartupMode != DEFAULT_SCAN_STARTUP_MODE) {
             return;
         }
@@ -396,7 +396,7 @@ public class PostgresSourceITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testSkippingfillWithPreHighWaterMark() throws Exception {
+    public void testSkipBackfillWithPreHighWaterMark() throws Exception {
         if (scanStartupMode != DEFAULT_SCAN_STARTUP_MODE) {
             return;
         }
@@ -436,7 +436,7 @@ public class PostgresSourceITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testSkippingfillWithPostLowWaterMark() throws Exception {
+    public void testSkipBackfillWithPostLowWaterMark() throws Exception {
         if (scanStartupMode != DEFAULT_SCAN_STARTUP_MODE) {
             return;
         }

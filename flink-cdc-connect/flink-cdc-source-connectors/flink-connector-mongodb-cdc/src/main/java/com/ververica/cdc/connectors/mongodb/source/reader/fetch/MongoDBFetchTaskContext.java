@@ -43,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static com.mongodb.client.model.changestream.OperationType.INSERT;
 import static com.ververica.cdc.connectors.mongodb.source.utils.BsonUtils.compareBsonValue;
 import static com.ververica.cdc.connectors.mongodb.source.utils.MongoRecordUtils.getDocumentKey;
 import static com.ververica.cdc.connectors.mongodb.source.utils.MongoRecordUtils.getResumeToken;

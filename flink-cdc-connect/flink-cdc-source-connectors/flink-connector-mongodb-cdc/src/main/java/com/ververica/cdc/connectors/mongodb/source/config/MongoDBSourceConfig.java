@@ -188,6 +188,11 @@ public class MongoDBSourceConfig implements SourceConfig {
     }
 
     @Override
+    public boolean isSkipSnapshotBackfill() {
+        return skipSnapshotBackfill;
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) {
             return true;

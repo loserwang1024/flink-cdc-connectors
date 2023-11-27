@@ -17,7 +17,6 @@
 package com.ververica.cdc.connectors.base.source.reader.external;
 
 import com.ververica.cdc.common.annotation.VisibleForTesting;
-import com.ververica.cdc.connectors.base.config.BaseSourceConfig;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
 import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
@@ -74,7 +73,7 @@ public abstract class AbstractScanFetcherTask implements FetchTask {
             snapshotPhaseHooks.getPreHighWatermarkAction().accept(sourceConfig, snapshotSplit);
         }
         Offset highWatermark =
-                ((BaseSourceConfig) context.getSourceConfig()).isSkipSnapshotBackfill()
+                context.getSourceConfig().isSkipSnapshotBackfill()
                         ? lowWatermark
                         : dialect.displayCurrentOffset(sourceConfig);
         LOG.info(

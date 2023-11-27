@@ -33,9 +33,11 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
+import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
 import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import com.ververica.cdc.connectors.mongodb.source.config.MongoDBSourceConfig;
+import com.ververica.cdc.connectors.mongodb.source.utils.MongoUtils;
 import com.ververica.cdc.connectors.mongodb.utils.MongoDBTestUtils.FailoverPhase;
 import com.ververica.cdc.connectors.mongodb.utils.MongoDBTestUtils.FailoverType;
 import com.ververica.cdc.connectors.mongodb.utils.TestTable;
@@ -50,7 +52,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.ververica.cdc.connectors.mongodb.source.utils.MongoUtils.clientFor;
 import static com.ververica.cdc.connectors.mongodb.utils.MongoDBAssertUtils.assertEqualsInAnyOrder;
 import static com.ververica.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
 import static com.ververica.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
@@ -148,7 +149,7 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
     }
 
     @Test
-    public void testEnablefillWithPreHighWaterMark() throws Exception {
+    public void testEnableBackfillWithPreHighWaterMark() throws Exception {
 
         List<String> records = getResultOfWithHooks(false, 21, USE_PRE_HIGHWATERMARK_HOOK);
 
@@ -181,7 +182,7 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
     }
 
     @Test
-    public void testEnablefillWithPostLowWaterMark() throws Exception {
+    public void testEnableBackfillWithPostLowWaterMark() throws Exception {
 
         List<String> records = getResultOfWithHooks(false, 21, USE_POST_LOWWATERMARK_HOOK);
 
@@ -214,7 +215,7 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
     }
 
     @Test
-    public void testSkippingfillWithPreHighWaterMark() throws Exception {
+    public void testSkipBackfillWithPreHighWaterMark() throws Exception {
 
         List<String> records = getResultOfWithHooks(true, 25, USE_PRE_HIGHWATERMARK_HOOK);
 
@@ -251,7 +252,7 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
     }
 
     @Test
-    public void testSkippingfillWithPostLowWaterMark() throws Exception {
+    public void testSkipBackfillWithPostLowWaterMark() throws Exception {
 
         List<String> records = getResultOfWithHooks(true, 25, USE_POST_LOWWATERMARK_HOOK);
 
@@ -298,18 +299,20 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
         ResolvedSchema customersSchame =
                 new ResolvedSchema(
                         Arrays.asList(
-                                physical("id", BIGINT().notNull()),
+                                physical("cid", BIGINT().notNull()),
                                 physical("name", STRING()),
                                 physical("address", STRING()),
                                 physical("phone_number", STRING())),
                         new ArrayList<>(),
-                        UniqueConstraint.primaryKey("pk", Collections.singletonList("id")));
+                        UniqueConstraint.primaryKey("pk", Collections.singletonList("cid")));
         TestTable customerTable = new TestTable(customerDatabase, "customers", customersSchame);
         MongoDBSource source =
                 new MongoDBSourceBuilder()
                         .hosts(CONTAINER.getHostAndPort())
+                        .databaseList(customerDatabase)
                         .username(FLINK_USER)
                         .password(FLINK_USER_PASSWORD)
+                        .startupOptions(StartupOptions.initial())
                         .collectionList(
                                 getCollectionNameRegex(
                                         customerDatabase, new String[] {"customers"}))
@@ -322,16 +325,19 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
         SnapshotPhaseHook snapshotPhaseHook =
                 (sourceConfig, split) -> {
                     MongoDBSourceConfig mongoDBSourceConfig = (MongoDBSourceConfig) sourceConfig;
-                    MongoClient mongoClient = clientFor(mongoDBSourceConfig);
+                    MongoClient mongoClient = MongoUtils.clientFor(mongoDBSourceConfig);
                     MongoDatabase database =
                             mongoClient.getDatabase(mongoDBSourceConfig.getDatabaseList().get(0));
-                    MongoCollection<Document> mongoCollection =
-                            database.getCollection(mongoDBSourceConfig.getCollectionList().get(0));
-                    mongoCollection.insertOne(
-                            customerDocOf(15213L, "user_15213", "Shanghai", "123567891234"));
+                    MongoCollection<Document> mongoCollection = database.getCollection("customers");
+                    Document document = new Document();
+                    document.put("cid", 15213L);
+                    document.put("name", "user_15213");
+                    document.put("address", "Shanghai");
+                    document.put("phone_number", "123567891234");
+                    mongoCollection.insertOne(document);
                     mongoCollection.updateOne(
                             Filters.eq("cid", 2000L), Updates.set("address", "Pittsburgh"));
-                    mongoCollection.deleteOne(Filters.eq("cid", 1009L));
+                    mongoCollection.deleteOne(Filters.eq("cid", 1019L));
                 };
 
         if (hookType == USE_POST_LOWWATERMARK_HOOK) {
@@ -496,7 +502,7 @@ public class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
     private String getCollectionNameRegex(String database, String[] captureCustomerCollections) {
         checkState(captureCustomerCollections.length > 0);
         if (captureCustomerCollections.length == 1) {
-            return captureCustomerCollections[0];
+            return database + "." + captureCustomerCollections[0];
         } else {
             // pattern that matches multiple collections
             return Arrays.stream(captureCustomerCollections)

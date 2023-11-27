@@ -106,6 +106,7 @@ public abstract class BaseSourceConfig implements SourceConfig {
         return Configuration.from(dbzProperties);
     }
 
+    @Override
     public boolean isSkipSnapshotBackfill() {
         return skipSnapshotBackfill;
     }
