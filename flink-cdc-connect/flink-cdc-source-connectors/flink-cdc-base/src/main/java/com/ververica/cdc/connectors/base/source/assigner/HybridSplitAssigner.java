@@ -39,6 +39,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isInitialAssigningFinished;
+import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isNewlyAddedAssigningSnapshotFinished;
+
 /** Assigner for Hybrid split which contains snapshot splits and stream splits. */
 public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigner {
 
@@ -114,6 +117,10 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
 
     @Override
     public Optional<SourceSplitBase> getNext() {
+        if (isNewlyAddedAssigningSnapshotFinished(getAssignerStatus())) {
+            // do not assign split until the adding table process finished
+            return Optional.empty();
+        }
         if (snapshotSplitAssigner.noMoreSplits()) {
             // stream split assigning
             if (isStreamSplitAssigned) {
@@ -121,7 +128,7 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
                 LOG.trace(
                         "No more splits for the SnapshotSplitAssigner. StreamSplit is already assigned.");
                 return Optional.empty();
-            } else if (snapshotSplitAssigner.isFinished()) {
+            } else if (isInitialAssigningFinished(snapshotSplitAssigner.getAssignerStatus())) {
                 // we need to wait snapshot-assigner to be finished before
                 // assigning the stream split. Otherwise, records emitted from stream split
                 // might be out-of-order in terms of same primary key with snapshot splits.
@@ -181,6 +188,21 @@ public class HybridSplitAssigner<C extends SourceConfig> implements SplitAssigne
     @Override
     public void notifyCheckpointComplete(long checkpointId) {
         snapshotSplitAssigner.notifyCheckpointComplete(checkpointId);
+    }
+
+    @Override
+    public AssignerStatus getAssignerStatus() {
+        return snapshotSplitAssigner.getAssignerStatus();
+    }
+
+    @Override
+    public void startAssignNewlyAddedTables() {
+        snapshotSplitAssigner.startAssignNewlyAddedTables();
+    }
+
+    @Override
+    public void onStreamSplitUpdated() {
+        snapshotSplitAssigner.onStreamSplitUpdated();
     }
 
     @Override

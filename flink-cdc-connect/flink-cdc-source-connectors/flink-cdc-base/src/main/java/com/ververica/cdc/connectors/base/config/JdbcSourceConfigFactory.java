@@ -57,6 +57,8 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     protected String chunkKeyColumn;
     protected boolean skipSnapshotBackfill =
             JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue();
+    protected boolean isScanNewlyAddedTableEnabled =
+            JdbcSourceOptions.SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue();
 
     /** Integer port number of the database server. */
     public JdbcSourceConfigFactory hostname(String hostname) {
@@ -238,8 +240,14 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
      * promised). For example updating an already updated value in snapshot, or deleting an already
      * deleted entry in snapshot. These replayed binlog events should be handled specially.
      */
-    public void skipSnapshotBackfill(boolean skipSnapshotBackfill) {
+    public JdbcSourceConfigFactory skipSnapshotBackfill(boolean skipSnapshotBackfill) {
         this.skipSnapshotBackfill = skipSnapshotBackfill;
+        return this;
+    }
+
+    public JdbcSourceConfigFactory scanNewlyAddedTable(boolean isScanNewlyAddedTableEnabled) {
+        this.isScanNewlyAddedTableEnabled = isScanNewlyAddedTableEnabled;
+        return this;
     }
 
     @Override

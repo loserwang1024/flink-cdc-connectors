@@ -104,6 +104,18 @@ public interface SplitAssigner {
      */
     void notifyCheckpointComplete(long checkpointId);
 
+    /** Gets the split assigner status, see {@code AssignerStatus}. */
+    AssignerStatus getAssignerStatus();
+
+    /** Starts assign newly added tables. */
+    void startAssignNewlyAddedTables();
+
+    /**
+     * Callback to handle the binlog split has been updated in the newly added tables process. This
+     * is useful to check the newly added tables has been finished or not.
+     */
+    void onStreamSplitUpdated();
+
     /**
      * Called to close the assigner, in case it holds on to any resources, like threads or network
      * connections.

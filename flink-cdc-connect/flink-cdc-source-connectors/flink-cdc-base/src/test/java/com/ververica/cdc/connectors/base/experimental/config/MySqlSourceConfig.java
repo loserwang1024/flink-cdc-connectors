@@ -82,7 +82,8 @@ public class MySqlSourceConfig extends JdbcSourceConfig {
                 connectMaxRetries,
                 connectionPoolSize,
                 null,
-                true);
+                true,
+                false);
     }
 
     @Override

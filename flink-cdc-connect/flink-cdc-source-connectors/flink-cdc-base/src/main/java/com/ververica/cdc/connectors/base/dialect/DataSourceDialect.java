@@ -69,7 +69,11 @@ public interface DataSourceDialect<C extends SourceConfig>
     FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase);
 
     /** The task context used for fetch task to fetch data from external systems. */
+    @Deprecated
     FetchTask.Context createFetchTaskContext(SourceSplitBase sourceSplitBase, C sourceConfig);
+
+    /** The task context used for fetch task to fetch data from external systems. */
+    FetchTask.Context createFetchTaskContext(C taskSourceConfig);
 
     /**
      * We have an empty default implementation here because most dialects do not have to implement

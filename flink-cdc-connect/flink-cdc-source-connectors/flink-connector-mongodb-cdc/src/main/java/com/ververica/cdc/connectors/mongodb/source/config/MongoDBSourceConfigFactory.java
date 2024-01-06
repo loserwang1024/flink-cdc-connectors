@@ -289,6 +289,7 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
                 closeIdleReaders,
                 enableFullDocPrePostImage,
                 disableCursorTimeout,
-                skipSnapshotBackfill);
+                skipSnapshotBackfill,
+                false);
     }
 }

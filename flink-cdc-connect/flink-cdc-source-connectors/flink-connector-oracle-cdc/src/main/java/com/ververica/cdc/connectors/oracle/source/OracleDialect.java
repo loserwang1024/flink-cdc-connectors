@@ -131,8 +131,14 @@ public class OracleDialect implements JdbcDataSourceDialect {
     }
 
     @Override
+    @Deprecated
     public OracleSourceFetchTaskContext createFetchTaskContext(
             SourceSplitBase sourceSplitBase, JdbcSourceConfig taskSourceConfig) {
+        return createFetchTaskContext(taskSourceConfig);
+    }
+
+    @Override
+    public OracleSourceFetchTaskContext createFetchTaskContext(JdbcSourceConfig taskSourceConfig) {
         return new OracleSourceFetchTaskContext(taskSourceConfig, this);
     }
 

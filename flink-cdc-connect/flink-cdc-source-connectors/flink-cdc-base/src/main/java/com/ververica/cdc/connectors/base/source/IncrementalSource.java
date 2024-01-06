@@ -48,6 +48,7 @@ import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitSerializer
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitState;
 import com.ververica.cdc.connectors.base.source.metrics.SourceReaderMetrics;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader;
+import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReaderContext;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceRecordEmitter;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceSplitReader;
 import com.ververica.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
@@ -78,7 +79,7 @@ public class IncrementalSource<T, C extends SourceConfig>
     // This field is introduced for testing purpose, for example testing if changes made in the
     // snapshot phase are correctly backfilled into the snapshot by registering a pre high watermark
     // hook for generating changes.
-    private SnapshotPhaseHooks snapshotHooks = SnapshotPhaseHooks.empty();
+    protected SnapshotPhaseHooks snapshotHooks = SnapshotPhaseHooks.empty();
 
     public IncrementalSource(
             SourceConfig.Factory<C> configFactory,
@@ -120,19 +121,22 @@ public class IncrementalSource<T, C extends SourceConfig>
                 new SourceReaderMetrics(readerContext.metricGroup());
 
         sourceReaderMetrics.registerMetrics();
+        IncrementalSourceReaderContext incrementalSourceReaderContext =
+                new IncrementalSourceReaderContext(readerContext);
         Supplier<IncrementalSourceSplitReader<C>> splitReaderSupplier =
                 () ->
                         new IncrementalSourceSplitReader<>(
                                 readerContext.getIndexOfSubtask(),
                                 dataSourceDialect,
                                 sourceConfig,
+                                incrementalSourceReaderContext,
                                 snapshotHooks);
         return new IncrementalSourceReader<>(
                 elementsQueue,
                 splitReaderSupplier,
                 createRecordEmitter(sourceConfig, sourceReaderMetrics),
                 readerContext.getConfiguration(),
-                readerContext,
+                incrementalSourceReaderContext,
                 sourceConfig,
                 sourceSplitSerializer,
                 dataSourceDialect);

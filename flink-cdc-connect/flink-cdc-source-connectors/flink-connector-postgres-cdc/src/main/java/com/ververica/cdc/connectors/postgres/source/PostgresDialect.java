@@ -208,8 +208,14 @@ public class PostgresDialect implements JdbcDataSourceDialect {
     }
 
     @Override
+    @Deprecated
     public JdbcSourceFetchTaskContext createFetchTaskContext(
             SourceSplitBase sourceSplitBase, JdbcSourceConfig taskSourceConfig) {
+        return createFetchTaskContext(taskSourceConfig);
+    }
+
+    @Override
+    public JdbcSourceFetchTaskContext createFetchTaskContext(JdbcSourceConfig taskSourceConfig) {
         return new PostgresSourceFetchTaskContext(taskSourceConfig, this);
     }
 

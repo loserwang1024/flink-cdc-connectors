@@ -212,8 +212,15 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
             return true;
         }
 
-        return !maxSplitHighWatermarkMap.containsKey(tableId)
-                && taskContext.getTableFilter().isIncluded(tableId);
+        // Use still need to capture new sharding table if user disable scan new added table,
+        // The history records for all new added tables(including sharding table and normal table)
+        // will be capture after restore from a savepoint if user enable scan new added table
+        if (!taskContext.getSourceConfig().isScanNewlyAddedTableEnabled()) {
+            // the new added sharding table without history records
+            return !maxSplitHighWatermarkMap.containsKey(tableId)
+                    && taskContext.getTableFilter().isIncluded(tableId);
+        }
+        return false;
     }
 
     private void configureFilter() {

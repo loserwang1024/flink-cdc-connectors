@@ -134,8 +134,15 @@ public class SqlServerDialect implements JdbcDataSourceDialect {
     }
 
     @Override
+    @Deprecated
     public SqlServerSourceFetchTaskContext createFetchTaskContext(
             SourceSplitBase sourceSplitBase, JdbcSourceConfig taskSourceConfig) {
+        return createFetchTaskContext(taskSourceConfig);
+    }
+
+    @Override
+    public SqlServerSourceFetchTaskContext createFetchTaskContext(
+            JdbcSourceConfig taskSourceConfig) {
         final SqlServerConnection jdbcConnection =
                 createSqlServerConnection(sourceConfig.getDbzConnectorConfig());
         final SqlServerConnection metaDataConnection =

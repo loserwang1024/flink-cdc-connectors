@@ -179,9 +179,15 @@ public class MongoDBDialect implements DataSourceDialect<MongoDBSourceConfig> {
         }
     }
 
+    @Deprecated
     @Override
     public MongoDBFetchTaskContext createFetchTaskContext(
             SourceSplitBase sourceSplitBase, MongoDBSourceConfig sourceConfig) {
+        return createFetchTaskContext(sourceConfig);
+    }
+
+    @Override
+    public MongoDBFetchTaskContext createFetchTaskContext(MongoDBSourceConfig sourceConfig) {
         CollectionDiscoveryInfo discoveryInfo = discoverAndCacheDataCollections(sourceConfig);
         ChangeStreamDescriptor changeStreamDescriptor =
                 getChangeStreamDescriptor(

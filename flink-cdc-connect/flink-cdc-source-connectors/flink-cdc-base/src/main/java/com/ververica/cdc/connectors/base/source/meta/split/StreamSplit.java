@@ -22,19 +22,40 @@ import io.debezium.relational.history.TableChanges.TableChange;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /** The split to describe the change log of database table(s). */
 public class StreamSplit extends SourceSplitBase {
+    public static final String STREAM_SPLIT_ID = "stream-split";
 
     private final Offset startingOffset;
     private final Offset endingOffset;
     private final List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos;
     private final Map<TableId, TableChange> tableSchemas;
     private final int totalFinishedSplitSize;
+
+    private final boolean isSuspended;
     @Nullable transient byte[] serializedFormCache;
+
+    public StreamSplit(
+            String splitId,
+            Offset startingOffset,
+            Offset endingOffset,
+            List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos,
+            Map<TableId, TableChange> tableSchemas,
+            int totalFinishedSplitSize,
+            boolean isSuspended) {
+        super(splitId);
+        this.startingOffset = startingOffset;
+        this.endingOffset = endingOffset;
+        this.finishedSnapshotSplitInfos = finishedSnapshotSplitInfos;
+        this.tableSchemas = tableSchemas;
+        this.totalFinishedSplitSize = totalFinishedSplitSize;
+        this.isSuspended = isSuspended;
+    }
 
     public StreamSplit(
             String splitId,
@@ -49,6 +70,7 @@ public class StreamSplit extends SourceSplitBase {
         this.finishedSnapshotSplitInfos = finishedSnapshotSplitInfos;
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
+        this.isSuspended = false;
     }
 
     public Offset getStartingOffset() {
@@ -76,6 +98,10 @@ public class StreamSplit extends SourceSplitBase {
         return totalFinishedSplitSize == finishedSnapshotSplitInfos.size();
     }
 
+    public boolean isSuspended() {
+        return isSuspended;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -88,7 +114,8 @@ public class StreamSplit extends SourceSplitBase {
             return false;
         }
         StreamSplit that = (StreamSplit) o;
-        return totalFinishedSplitSize == that.totalFinishedSplitSize
+        return isSuspended == that.isSuspended
+                && totalFinishedSplitSize == that.totalFinishedSplitSize
                 && Objects.equals(startingOffset, that.startingOffset)
                 && Objects.equals(endingOffset, that.endingOffset)
                 && Objects.equals(finishedSnapshotSplitInfos, that.finishedSnapshotSplitInfos)
@@ -103,7 +130,8 @@ public class StreamSplit extends SourceSplitBase {
                 endingOffset,
                 finishedSnapshotSplitInfos,
                 tableSchemas,
-                totalFinishedSplitSize);
+                totalFinishedSplitSize,
+                isSuspended);
     }
 
     @Override
@@ -116,6 +144,8 @@ public class StreamSplit extends SourceSplitBase {
                 + startingOffset
                 + ", endOffset="
                 + endingOffset
+                + ", isSuspended="
+                + isSuspended
                 + '}';
     }
 
@@ -131,7 +161,8 @@ public class StreamSplit extends SourceSplitBase {
                 streamSplit.getEndingOffset(),
                 splitInfos,
                 streamSplit.getTableSchemas(),
-                streamSplit.getTotalFinishedSplitSize());
+                streamSplit.getTotalFinishedSplitSize(),
+                streamSplit.isSuspended);
     }
 
     public static StreamSplit fillTableSchemas(
@@ -143,6 +174,64 @@ public class StreamSplit extends SourceSplitBase {
                 streamSplit.getEndingOffset(),
                 streamSplit.getFinishedSnapshotSplitInfos(),
                 tableSchemas,
-                streamSplit.getTotalFinishedSplitSize());
+                streamSplit.getTotalFinishedSplitSize(),
+                streamSplit.isSuspended);
+    }
+
+    public static StreamSplit toNormalStreamSplit(
+            StreamSplit suspendedStreamSplit, int totalFinishedSplitSize) {
+        return new StreamSplit(
+                suspendedStreamSplit.splitId,
+                suspendedStreamSplit.getStartingOffset(),
+                suspendedStreamSplit.getEndingOffset(),
+                suspendedStreamSplit.getFinishedSnapshotSplitInfos(),
+                suspendedStreamSplit.getTableSchemas(),
+                totalFinishedSplitSize,
+                false);
+    }
+
+    public static StreamSplit toSuspendedStreamSplit(StreamSplit normalStreamSplit) {
+        return new StreamSplit(
+                normalStreamSplit.splitId,
+                normalStreamSplit.getStartingOffset(),
+                normalStreamSplit.getEndingOffset(),
+                forwardHighWatermarkToStartingOffset(
+                        normalStreamSplit.getFinishedSnapshotSplitInfos(),
+                        normalStreamSplit.getStartingOffset()),
+                normalStreamSplit.getTableSchemas(),
+                normalStreamSplit.getTotalFinishedSplitSize(),
+                true);
+    }
+
+    /**
+     * Forwards {@link FinishedSnapshotSplitInfo#getHighWatermark()} to current binlog reading
+     * offset for these snapshot-splits have started the binlog reading, this is pretty useful for
+     * newly added table process that we can continue to consume binlog for these splits from the
+     * updated high watermark.
+     *
+     * @param existedSplitInfos
+     * @param currentReadingOffset
+     */
+    private static List<FinishedSnapshotSplitInfo> forwardHighWatermarkToStartingOffset(
+            List<FinishedSnapshotSplitInfo> existedSplitInfos, Offset currentReadingOffset) {
+        List<FinishedSnapshotSplitInfo> updatedSnapshotSplitInfos = new ArrayList<>();
+        for (FinishedSnapshotSplitInfo existedSplitInfo : existedSplitInfos) {
+            // for split has started read binlog, forward its high watermark to current binlog
+            // reading offset
+            if (existedSplitInfo.getHighWatermark().isBefore(currentReadingOffset)) {
+                FinishedSnapshotSplitInfo forwardHighWatermarkSnapshotSplitInfo =
+                        new FinishedSnapshotSplitInfo(
+                                existedSplitInfo.getTableId(),
+                                existedSplitInfo.getSplitId(),
+                                existedSplitInfo.getSplitStart(),
+                                existedSplitInfo.getSplitEnd(),
+                                currentReadingOffset,
+                                existedSplitInfo.getOffsetFactory());
+                updatedSnapshotSplitInfos.add(forwardHighWatermarkSnapshotSplitInfo);
+            } else {
+                updatedSnapshotSplitInfos.add(existedSplitInfo);
+            }
+        }
+        return updatedSnapshotSplitInfos;
     }
 }

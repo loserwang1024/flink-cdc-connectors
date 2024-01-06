@@ -441,7 +441,7 @@ public class MySqlSnapshotSplitAssigner implements MySqlSplitAssigner {
         // we need a complete checkpoint before mark this assigner to be finished, to wait for
         // all records of snapshot splits are completely processed
         if (checkpointIdToFinish == null
-                && !isSnapshotAssigningFinished(assignerStatus)
+                && isAssigningSnapshotSplits(assignerStatus)
                 && allSnapshotSplitsFinished()) {
             checkpointIdToFinish = checkpointId;
         }
