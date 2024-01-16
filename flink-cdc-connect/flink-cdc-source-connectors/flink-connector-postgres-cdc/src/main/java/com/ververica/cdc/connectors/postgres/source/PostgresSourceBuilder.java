@@ -262,6 +262,11 @@ public class PostgresSourceBuilder<T> {
         return this;
     }
 
+    public PostgresSourceBuilder<T> scanNewlyAddedTable(boolean isScanNewlyAddedTableEnabled) {
+        this.configFactory.scanNewlyAddedTable(isScanNewlyAddedTableEnabled);
+        return this;
+    }
+
     /**
      * Build the {@link PostgresIncrementalSource}.
      *

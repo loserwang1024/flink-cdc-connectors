@@ -62,7 +62,8 @@ public class PostgresSourceConfig extends JdbcSourceConfig {
             int connectMaxRetries,
             int connectionPoolSize,
             @Nullable String chunkKeyColumn,
-            boolean skipSnapshotBackfill) {
+            boolean skipSnapshotBackfill,
+            boolean isScanNewlyAddedTableEnabled) {
         super(
                 startupOptions,
                 databaseList,
@@ -88,7 +89,7 @@ public class PostgresSourceConfig extends JdbcSourceConfig {
                 connectionPoolSize,
                 chunkKeyColumn,
                 skipSnapshotBackfill,
-                false);
+                isScanNewlyAddedTableEnabled);
         this.subtaskId = subtaskId;
     }
 
