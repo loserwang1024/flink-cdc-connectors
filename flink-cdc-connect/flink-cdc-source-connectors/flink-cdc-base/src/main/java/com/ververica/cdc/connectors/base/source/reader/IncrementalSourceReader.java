@@ -16,6 +16,16 @@
 
 package com.ververica.cdc.connectors.base.source.reader;
 
+import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.base.source.reader.RecordEmitter;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
+import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
+import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcherManager;
+import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
+import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.Preconditions;
+
 import com.ververica.cdc.common.annotation.Experimental;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.dialect.DataSourceDialect;
@@ -40,15 +50,6 @@ import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplitState;
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;
-import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
-import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
-import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcherManager;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
-import org.apache.flink.util.FlinkRuntimeException;
-import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,22 +75,16 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Experimental
 public class IncrementalSourceReader<T, C extends SourceConfig>
         extends SingleThreadMultiplexSourceReaderBase<
-        SourceRecords, T, SourceSplitBase, SourceSplitState> {
+                SourceRecords, T, SourceSplitBase, SourceSplitState> {
 
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceReader.class);
 
-    /**
-     * todo: description suspend split: which.
-     */
+    /** todo: description suspend split: which. */
     private final Map<String, SnapshotSplit> finishedUnackedSplits;
-    /**
-     * todo: description suspend split: which.
-     */
+    /** todo: description suspend split: which. */
     private final Map<String, StreamSplit> uncompletedStreamSplits;
 
-    /**
-     * todo: description suspend split: which.
-     */
+    /** todo: description suspend split: which. */
     private volatile StreamSplit suspendedStreamSplit;
 
     private final int subtaskId;
@@ -452,9 +447,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
         }
     }
 
-    /**
-     * Returns next meta group id according to received meta number and meta group size.
-     */
+    /** Returns next meta group id according to received meta number and meta group size. */
     public static int getNextMetaGroupId(int receivedMetaNum, int metaGroupSize) {
         Preconditions.checkState(metaGroupSize > 0);
         return receivedMetaNum / metaGroupSize;

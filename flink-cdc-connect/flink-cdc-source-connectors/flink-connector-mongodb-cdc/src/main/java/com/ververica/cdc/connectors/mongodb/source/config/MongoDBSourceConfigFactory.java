@@ -64,6 +64,8 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
     private boolean disableCursorTimeout = true;
     protected boolean skipSnapshotBackfill = false;
 
+    protected boolean enableScanNewlyAddedTable = false;
+
     /** The protocol connected to MongoDB. For example mongodb or mongodb+srv. */
     public MongoDBSourceConfigFactory scheme(String scheme) {
         checkArgument(
@@ -265,6 +267,11 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
         return this;
     }
 
+    public MongoDBSourceConfigFactory enableScanNewlyAddedTable(boolean enableScanNewlyAddedTable) {
+        this.enableScanNewlyAddedTable = enableScanNewlyAddedTable;
+        return this;
+    }
+
     /** Creates a new {@link MongoDBSourceConfig} for the given subtask {@code subtaskId}. */
     @Override
     public MongoDBSourceConfig create(int subtaskId) {
@@ -290,6 +297,6 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
                 enableFullDocPrePostImage,
                 disableCursorTimeout,
                 skipSnapshotBackfill,
-                false);
+                enableScanNewlyAddedTable);
     }
 }

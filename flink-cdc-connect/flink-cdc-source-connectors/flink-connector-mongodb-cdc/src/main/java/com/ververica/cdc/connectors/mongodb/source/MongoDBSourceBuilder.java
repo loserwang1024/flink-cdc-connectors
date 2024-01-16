@@ -258,6 +258,11 @@ public class MongoDBSourceBuilder<T> {
         return this;
     }
 
+    public MongoDBSourceBuilder<T> enableScanNewlyAddedTable(boolean enableScanNewlyAddedTable) {
+        this.configFactory.enableScanNewlyAddedTable(enableScanNewlyAddedTable);
+        return this;
+    }
+
     /**
      * Build the {@link MongoDBSource}.
      *
