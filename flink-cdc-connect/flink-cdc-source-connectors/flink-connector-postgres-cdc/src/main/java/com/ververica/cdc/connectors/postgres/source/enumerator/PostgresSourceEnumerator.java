@@ -16,19 +16,20 @@
 
 package com.ververica.cdc.connectors.postgres.source.enumerator;
 
-import org.apache.flink.api.connector.source.Boundedness;
-import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.util.FlinkRuntimeException;
-
 import com.ververica.cdc.common.annotation.Internal;
 import com.ververica.cdc.connectors.base.source.assigner.SplitAssigner;
 import com.ververica.cdc.connectors.base.source.enumerator.IncrementalSourceEnumerator;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.postgres.source.PostgresDialect;
 import com.ververica.cdc.connectors.postgres.source.config.PostgresSourceConfig;
+import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatus;
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.connector.postgresql.connection.PostgresReplicationConnection;
 import io.debezium.connector.postgresql.spi.SlotState;
+import org.apache.flink.api.connector.source.Boundedness;
+import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SplitEnumeratorContext;
+import org.apache.flink.util.FlinkRuntimeException;
 
 /**
  * The Postgres source enumerator that enumerates receive the split request and assign the split to
@@ -38,6 +39,7 @@ import io.debezium.connector.postgresql.spi.SlotState;
 public class PostgresSourceEnumerator extends IncrementalSourceEnumerator {
 
     private final PostgresDialect postgresDialect;
+    private final PostgresSourceConfig sourceConfig;
 
     public PostgresSourceEnumerator(
             SplitEnumeratorContext<SourceSplitBase> context,
@@ -47,12 +49,28 @@ public class PostgresSourceEnumerator extends IncrementalSourceEnumerator {
             Boundedness boundedness) {
         super(context, sourceConfig, splitAssigner, boundedness);
         this.postgresDialect = postgresDialect;
+        this.sourceConfig = sourceConfig;
     }
+
 
     @Override
     public void start() {
         createSlotForGlobalStreamSplit();
         super.start();
+    }
+
+    @Override
+    public void handleSourceEvent(int subtaskId, SourceEvent sourceEvent) {
+        super.handleSourceEvent(subtaskId, sourceEvent);
+    }
+
+    @Override
+    protected void syncWithReaders(int[] subtaskIds, Throwable t) {
+        super.syncWithReaders(subtaskIds, t);
+        if (sourceConfig.isScanNewlyAddedTableEnabled() && streamSplitTaskId != null) {
+            context.sendEventToSourceReader(streamSplitTaskId,
+                    new SyncAssignStatus(splitAssigner.getAssignerStatus().getStatusCode()));
+        }
     }
 
     /**

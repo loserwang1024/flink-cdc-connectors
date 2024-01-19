@@ -16,14 +16,6 @@
 
 package com.ververica.cdc.connectors.base.source.enumerator;
 
-import org.apache.flink.api.connector.source.Boundedness;
-import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.api.connector.source.SplitEnumerator;
-import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.util.FlinkRuntimeException;
-
-import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
-
 import com.ververica.cdc.common.annotation.Experimental;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.source.assigner.HybridSplitAssigner;
@@ -42,11 +34,16 @@ import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
+import org.apache.flink.api.connector.source.Boundedness;
+import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SplitEnumerator;
+import org.apache.flink.api.connector.source.SplitEnumeratorContext;
+import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -77,7 +74,8 @@ public class IncrementalSourceEnumerator
 
     private Boundedness boundedness;
 
-    @Nullable private Integer streamSplitTaskId;
+    @Nullable
+    protected Integer streamSplitTaskId;
 
     public IncrementalSourceEnumerator(
             SplitEnumeratorContext<SourceSplitBase> context,
@@ -228,9 +226,9 @@ public class IncrementalSourceEnumerator
         // the assigner.
         return splitAssigner.noMoreSplits()
                 && (boundedness == Boundedness.BOUNDED
-                        || (sourceConfig.isCloseIdleReaders()
-                                && streamSplitTaskId != null
-                                && !streamSplitTaskId.equals(nextAwaiting)));
+                || (sourceConfig.isCloseIdleReaders()
+                && streamSplitTaskId != null
+                && !streamSplitTaskId.equals(nextAwaiting)));
     }
 
     private int[] getRegisteredReader() {
@@ -239,7 +237,7 @@ public class IncrementalSourceEnumerator
                 .toArray();
     }
 
-    private void syncWithReaders(int[] subtaskIds, Throwable t) {
+    protected void syncWithReaders(int[] subtaskIds, Throwable t) {
         if (t != null) {
             throw new FlinkRuntimeException("Failed to list obtain registered readers due to:", t);
         }
