@@ -82,14 +82,14 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
     /** todo: description suspend split: which. */
     private final Map<String, SnapshotSplit> finishedUnackedSplits;
     /** todo: description suspend split: which. */
-    private final Map<String, StreamSplit> uncompletedStreamSplits;
+    protected final Map<String, StreamSplit> uncompletedStreamSplits;
 
     /** todo: description suspend split: which. */
-    private volatile StreamSplit suspendedStreamSplit;
+    protected volatile StreamSplit suspendedStreamSplit;
 
     private final int subtaskId;
     private final SourceSplitSerializer sourceSplitSerializer;
-    private final C sourceConfig;
+    protected final C sourceConfig;
     private final DataSourceDialect<C> dialect;
 
     private final IncrementalSourceReaderContext incrementalSourceReaderContext;
@@ -151,7 +151,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
 
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
-        // dialect.notifyCheckpointComplete(checkpointId);
+        dialect.notifyCheckpointComplete(checkpointId);
     }
 
     @Override

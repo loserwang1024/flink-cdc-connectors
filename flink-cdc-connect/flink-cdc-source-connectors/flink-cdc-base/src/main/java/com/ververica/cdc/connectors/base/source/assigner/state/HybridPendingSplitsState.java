@@ -22,11 +22,20 @@ import java.util.Objects;
 public class HybridPendingSplitsState extends PendingSplitsState {
     private final SnapshotPendingSplitsState snapshotPendingSplits;
     private final boolean isStreamSplitAssigned;
+    private final int streamSplitTaskId;
 
     public HybridPendingSplitsState(
             SnapshotPendingSplitsState snapshotPendingSplits, boolean isStreamSplitAssigned) {
+        this(snapshotPendingSplits, isStreamSplitAssigned, -1);
+    }
+
+    public HybridPendingSplitsState(
+            SnapshotPendingSplitsState snapshotPendingSplits,
+            boolean isStreamSplitAssigned,
+            int streamSplitTaskId) {
         this.snapshotPendingSplits = snapshotPendingSplits;
         this.isStreamSplitAssigned = isStreamSplitAssigned;
+        this.streamSplitTaskId = streamSplitTaskId;
     }
 
     public SnapshotPendingSplitsState getSnapshotPendingSplits() {
@@ -35,6 +44,10 @@ public class HybridPendingSplitsState extends PendingSplitsState {
 
     public boolean isStreamSplitAssigned() {
         return isStreamSplitAssigned;
+    }
+
+    public Integer getStreamSplitTaskId() {
+        return streamSplitTaskId;
     }
 
     @Override

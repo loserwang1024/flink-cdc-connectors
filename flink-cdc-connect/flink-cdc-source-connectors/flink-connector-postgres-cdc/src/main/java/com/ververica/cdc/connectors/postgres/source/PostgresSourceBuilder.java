@@ -16,28 +16,39 @@
 
 package com.ververica.cdc.connectors.postgres.source;
 
-import org.apache.flink.api.connector.source.SplitEnumerator;
+import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
+import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.util.FlinkRuntimeException;
 
 import com.ververica.cdc.common.annotation.Experimental;
+import com.ververica.cdc.connectors.base.config.JdbcSourceConfig;
 import com.ververica.cdc.connectors.base.options.StartupOptions;
 import com.ververica.cdc.connectors.base.source.assigner.HybridSplitAssigner;
 import com.ververica.cdc.connectors.base.source.assigner.SplitAssigner;
 import com.ververica.cdc.connectors.base.source.assigner.StreamSplitAssigner;
+import com.ververica.cdc.connectors.base.source.assigner.state.HybridPendingSplitsState;
 import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
+import com.ververica.cdc.connectors.base.source.assigner.state.StreamPendingSplitsState;
 import com.ververica.cdc.connectors.base.source.jdbc.JdbcIncrementalSource;
+import com.ververica.cdc.connectors.base.source.meta.split.SourceRecords;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
+import com.ververica.cdc.connectors.base.source.metrics.SourceReaderMetrics;
+import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReaderContext;
+import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceSplitReader;
 import com.ververica.cdc.connectors.postgres.source.config.PostgresSourceConfig;
 import com.ververica.cdc.connectors.postgres.source.config.PostgresSourceConfigFactory;
 import com.ververica.cdc.connectors.postgres.source.enumerator.PostgresSourceEnumerator;
 import com.ververica.cdc.connectors.postgres.source.offset.PostgresOffsetFactory;
+import com.ververica.cdc.connectors.postgres.source.reader.PostgresSourceReader;
 import com.ververica.cdc.debezium.DebeziumDeserializationSchema;
 import io.debezium.relational.TableId;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Supplier;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -291,7 +302,7 @@ public class PostgresSourceBuilder<T> {
         }
 
         @Override
-        public SplitEnumerator<SourceSplitBase, PendingSplitsState> createEnumerator(
+        public PostgresSourceEnumerator createEnumerator(
                 SplitEnumeratorContext<SourceSplitBase> enumContext) {
             final SplitAssigner splitAssigner;
             PostgresSourceConfig sourceConfig = (PostgresSourceConfig) configFactory.create(0);
@@ -324,6 +335,77 @@ public class PostgresSourceBuilder<T> {
                     splitAssigner,
                     (PostgresDialect) dataSourceDialect,
                     this.getBoundedness());
+        }
+
+        @Override
+        public PostgresSourceEnumerator restoreEnumerator(
+                SplitEnumeratorContext<SourceSplitBase> enumContext,
+                PendingSplitsState checkpoint) {
+            final SplitAssigner splitAssigner;
+            PostgresSourceConfig sourceConfig = (PostgresSourceConfig) configFactory.create(0);
+            int streamSplitTaskId = -1;
+            if (checkpoint instanceof HybridPendingSplitsState) {
+                splitAssigner =
+                        new HybridSplitAssigner<>(
+                                sourceConfig,
+                                enumContext.currentParallelism(),
+                                (HybridPendingSplitsState) checkpoint,
+                                dataSourceDialect,
+                                offsetFactory);
+                streamSplitTaskId = ((HybridPendingSplitsState) checkpoint).getStreamSplitTaskId();
+            } else if (checkpoint instanceof StreamPendingSplitsState) {
+                splitAssigner =
+                        new StreamSplitAssigner(
+                                sourceConfig,
+                                (StreamPendingSplitsState) checkpoint,
+                                dataSourceDialect,
+                                offsetFactory);
+            } else {
+                throw new UnsupportedOperationException(
+                        "Unsupported restored PendingSplitsState: " + checkpoint);
+            }
+
+            return new PostgresSourceEnumerator(
+                    enumContext,
+                    sourceConfig,
+                    splitAssigner,
+                    (PostgresDialect) dataSourceDialect,
+                    getBoundedness(),
+                    streamSplitTaskId);
+        }
+
+        @Override
+        public PostgresSourceReader createReader(SourceReaderContext readerContext)
+                throws Exception {
+            // create source config for the given subtask (e.g. unique server id)
+            PostgresSourceConfig sourceConfig =
+                    (PostgresSourceConfig) configFactory.create(readerContext.getIndexOfSubtask());
+            FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecords>> elementsQueue =
+                    new FutureCompletingBlockingQueue<>();
+
+            final SourceReaderMetrics sourceReaderMetrics =
+                    new SourceReaderMetrics(readerContext.metricGroup());
+
+            sourceReaderMetrics.registerMetrics();
+            IncrementalSourceReaderContext incrementalSourceReaderContext =
+                    new IncrementalSourceReaderContext(readerContext);
+            Supplier<IncrementalSourceSplitReader<JdbcSourceConfig>> splitReaderSupplier =
+                    () ->
+                            new IncrementalSourceSplitReader<>(
+                                    readerContext.getIndexOfSubtask(),
+                                    dataSourceDialect,
+                                    sourceConfig,
+                                    incrementalSourceReaderContext,
+                                    snapshotHooks);
+            return new PostgresSourceReader(
+                    elementsQueue,
+                    splitReaderSupplier,
+                    createRecordEmitter(sourceConfig, sourceReaderMetrics),
+                    readerContext.getConfiguration(),
+                    incrementalSourceReaderContext,
+                    sourceConfig,
+                    sourceSplitSerializer,
+                    dataSourceDialect);
         }
 
         public static <T> PostgresSourceBuilder<T> builder() {

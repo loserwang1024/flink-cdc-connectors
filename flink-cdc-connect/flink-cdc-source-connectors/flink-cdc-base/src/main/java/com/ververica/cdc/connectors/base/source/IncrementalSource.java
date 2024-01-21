@@ -179,6 +179,7 @@ public class IncrementalSource<T, C extends SourceConfig>
         C sourceConfig = configFactory.create(0);
 
         final SplitAssigner splitAssigner;
+        int streamSplitTaskId = -1;
         if (checkpoint instanceof HybridPendingSplitsState) {
             splitAssigner =
                     new HybridSplitAssigner<>(
@@ -187,6 +188,7 @@ public class IncrementalSource<T, C extends SourceConfig>
                             (HybridPendingSplitsState) checkpoint,
                             dataSourceDialect,
                             offsetFactory);
+            streamSplitTaskId = ((HybridPendingSplitsState) checkpoint).getStreamSplitTaskId();
         } else if (checkpoint instanceof StreamPendingSplitsState) {
             splitAssigner =
                     new StreamSplitAssigner(
@@ -198,8 +200,9 @@ public class IncrementalSource<T, C extends SourceConfig>
             throw new UnsupportedOperationException(
                     "Unsupported restored PendingSplitsState: " + checkpoint);
         }
+
         return new IncrementalSourceEnumerator(
-                enumContext, sourceConfig, splitAssigner, getBoundedness());
+                enumContext, sourceConfig, splitAssigner, getBoundedness(), streamSplitTaskId);
     }
 
     @Override

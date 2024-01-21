@@ -42,6 +42,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Tests for {@link PendingSplitsStateSerializer}. */
+// todo: 新增streamSplitTaskId的测试
 public class PendingSplitsStateSerializerTest {
 
     private TableId tableId = TableId.parse("catalog.schema.table1");

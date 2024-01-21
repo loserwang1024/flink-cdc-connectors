@@ -16,10 +16,19 @@
 
 package com.ververica.cdc.connectors.base.source.enumerator;
 
+import org.apache.flink.api.connector.source.Boundedness;
+import org.apache.flink.api.connector.source.SourceEvent;
+import org.apache.flink.api.connector.source.SplitEnumerator;
+import org.apache.flink.api.connector.source.SplitEnumeratorContext;
+import org.apache.flink.util.FlinkRuntimeException;
+
+import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
+
 import com.ververica.cdc.common.annotation.Experimental;
 import com.ververica.cdc.connectors.base.config.SourceConfig;
 import com.ververica.cdc.connectors.base.source.assigner.HybridSplitAssigner;
 import com.ververica.cdc.connectors.base.source.assigner.SplitAssigner;
+import com.ververica.cdc.connectors.base.source.assigner.state.HybridPendingSplitsState;
 import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsAckEvent;
 import com.ververica.cdc.connectors.base.source.meta.events.FinishedSnapshotSplitsReportEvent;
@@ -34,16 +43,11 @@ import com.ververica.cdc.connectors.base.source.meta.offset.Offset;
 import com.ververica.cdc.connectors.base.source.meta.split.FinishedSnapshotSplitInfo;
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
-import org.apache.flink.api.connector.source.Boundedness;
-import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.api.connector.source.SplitEnumerator;
-import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.shaded.guava31.com.google.common.collect.Lists;
-import org.apache.flink.util.FlinkRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -69,24 +73,33 @@ public class IncrementalSourceEnumerator
     protected final SplitAssigner splitAssigner;
 
     // using TreeSet to prefer assigning stream split to task-0 for easier debug
-    private final TreeSet<Integer> readersAwaitingSplit;
+    protected final TreeSet<Integer> readersAwaitingSplit;
     private List<List<FinishedSnapshotSplitInfo>> finishedSnapshotSplitMeta;
 
     private Boundedness boundedness;
 
-    @Nullable
-    protected Integer streamSplitTaskId;
+    protected int streamSplitTaskId = -1;
 
     public IncrementalSourceEnumerator(
             SplitEnumeratorContext<SourceSplitBase> context,
             SourceConfig sourceConfig,
             SplitAssigner splitAssigner,
             Boundedness boundedness) {
+        this(context, sourceConfig, splitAssigner, boundedness, -1);
+    }
+
+    public IncrementalSourceEnumerator(
+            SplitEnumeratorContext<SourceSplitBase> context,
+            SourceConfig sourceConfig,
+            SplitAssigner splitAssigner,
+            Boundedness boundedness,
+            int streamSplitTaskId) {
         this.context = context;
         this.sourceConfig = sourceConfig;
         this.splitAssigner = splitAssigner;
         this.readersAwaitingSplit = new TreeSet<>();
         this.boundedness = boundedness;
+        this.streamSplitTaskId = streamSplitTaskId;
     }
 
     @Override
@@ -162,7 +175,16 @@ public class IncrementalSourceEnumerator
 
     @Override
     public PendingSplitsState snapshotState(long checkpointId) {
-        return splitAssigner.snapshotState(checkpointId);
+        PendingSplitsState pendingSplitsState = splitAssigner.snapshotState(checkpointId);
+        if (streamSplitTaskId != -1 && pendingSplitsState instanceof HybridPendingSplitsState) {
+            pendingSplitsState =
+                    new HybridPendingSplitsState(
+                            ((HybridPendingSplitsState) pendingSplitsState)
+                                    .getSnapshotPendingSplits(),
+                            ((HybridPendingSplitsState) pendingSplitsState).isStreamSplitAssigned(),
+                            streamSplitTaskId);
+        }
+        return pendingSplitsState;
     }
 
     @Override
@@ -180,7 +202,7 @@ public class IncrementalSourceEnumerator
 
     // ------------------------------------------------------------------------------------------
 
-    private void assignSplits() {
+    protected void assignSplits() {
         final Iterator<Integer> awaitingReader = readersAwaitingSplit.iterator();
 
         while (awaitingReader.hasNext()) {
@@ -226,12 +248,12 @@ public class IncrementalSourceEnumerator
         // the assigner.
         return splitAssigner.noMoreSplits()
                 && (boundedness == Boundedness.BOUNDED
-                || (sourceConfig.isCloseIdleReaders()
-                && streamSplitTaskId != null
-                && !streamSplitTaskId.equals(nextAwaiting)));
+                        || (sourceConfig.isCloseIdleReaders()
+                                && streamSplitTaskId != -1
+                                && streamSplitTaskId != (nextAwaiting)));
     }
 
-    private int[] getRegisteredReader() {
+    protected int[] getRegisteredReader() {
         return this.context.registeredReaders().keySet().stream()
                 .mapToInt(Integer::intValue)
                 .toArray();

@@ -210,4 +210,9 @@ public enum AssignerStatus {
     public static boolean isNewlyAddedAssigningSnapshotFinished(AssignerStatus assignerStatus) {
         return assignerStatus == NEWLY_ADDED_ASSIGNING_SNAPSHOT_FINISHED;
     }
+
+    public static boolean isInNewlyAddedProcess(AssignerStatus assignerStatus) {
+        return assignerStatus == NEWLY_ADDED_ASSIGNING_SNAPSHOT_FINISHED
+                || assignerStatus == NEWLY_ADDED_ASSIGNING;
+    }
 }
