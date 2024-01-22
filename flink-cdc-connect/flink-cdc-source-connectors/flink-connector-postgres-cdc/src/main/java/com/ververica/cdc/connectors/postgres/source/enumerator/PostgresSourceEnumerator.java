@@ -27,13 +27,13 @@ import com.ververica.cdc.connectors.base.source.enumerator.IncrementalSourceEnum
 import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import com.ververica.cdc.connectors.postgres.source.PostgresDialect;
 import com.ververica.cdc.connectors.postgres.source.config.PostgresSourceConfig;
-import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatus;
-import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatusAck;
+import com.ververica.cdc.connectors.postgres.source.events.ReportCommitSuspendEvent;
+import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatusEvent;
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.connector.postgresql.connection.PostgresReplicationConnection;
 import io.debezium.connector.postgresql.spi.SlotState;
 
-import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isInNewlyAddedProcess;
+import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isNewlyAddedAssigning;
 
 /**
  * The Postgres source enumerator that enumerates receive the split request and assign the split to
@@ -44,7 +44,7 @@ public class PostgresSourceEnumerator extends IncrementalSourceEnumerator {
 
     private final PostgresDialect postgresDialect;
     private final PostgresSourceConfig sourceConfig;
-    private volatile boolean isSuspendCommitOffsetAck = false;
+    private volatile boolean isCommitOffset = true;
 
     public PostgresSourceEnumerator(
             SplitEnumeratorContext<SourceSplitBase> context,
@@ -75,25 +75,24 @@ public class PostgresSourceEnumerator extends IncrementalSourceEnumerator {
 
     @Override
     protected void assignSplits() {
-        // when enable scan newly added table, only isSuspendWallog = true will assign new snapshot
-        // splits
+        // if scan newly added table is enable, can not assign new added table's snapshot splits
+        // until source reader doesn't commit offset.
         if (sourceConfig.isScanNewlyAddedTableEnabled()
                 && streamSplitTaskId != -1
-                && !isSuspendCommitOffsetAck
-                && isInNewlyAddedProcess(splitAssigner.getAssignerStatus())) {
+                && isCommitOffset
+                && isNewlyAddedAssigning(splitAssigner.getAssignerStatus())) {
             // just return here, the reader has been put into readersAwaitingSplit, will be assigned
             // split again later
             return;
         }
-
         super.assignSplits();
     }
 
     @Override
     public void handleSourceEvent(int subtaskId, SourceEvent sourceEvent) {
-        if (sourceEvent instanceof SyncAssignStatusAck) {
+        if (sourceEvent instanceof ReportCommitSuspendEvent) {
             if (streamSplitTaskId != -1 && streamSplitTaskId == subtaskId) {
-                this.isSuspendCommitOffsetAck = true;
+                this.isCommitOffset = ((ReportCommitSuspendEvent) sourceEvent).isCommitOffset();
             } else {
                 throw new RuntimeException("Receive SyncAssignStatusAck from wrong subtask");
             }
@@ -105,13 +104,12 @@ public class PostgresSourceEnumerator extends IncrementalSourceEnumerator {
     @Override
     protected void syncWithReaders(int[] subtaskIds, Throwable t) {
         super.syncWithReaders(subtaskIds, t);
-        // todo: 还需要文档润色一下
-        // postgres enumerator will send its assign status to reader to tell whether to start commit
-        // offset.
+        // if scan newly added table is enable, postgres enumerator will periodically send its
+        // assign status to tell reader whether to start offset commit.
         if (sourceConfig.isScanNewlyAddedTableEnabled() && streamSplitTaskId != -1) {
             context.sendEventToSourceReader(
                     streamSplitTaskId,
-                    new SyncAssignStatus(splitAssigner.getAssignerStatus().getStatusCode()));
+                    new SyncAssignStatusEvent(splitAssigner.getAssignerStatus().getStatusCode()));
         }
     }
 

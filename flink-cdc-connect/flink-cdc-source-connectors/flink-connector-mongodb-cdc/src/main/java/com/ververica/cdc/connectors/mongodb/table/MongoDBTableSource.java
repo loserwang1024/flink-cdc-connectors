@@ -120,7 +120,7 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
             boolean enableFullDocPrePostImage,
             boolean noCursorTimeout,
             boolean skipSnapshotBackfill,
-            boolean enableScanNewlyAddedTable) {
+            boolean scanNewlyAddedTableEnabled) {
         this.physicalSchema = physicalSchema;
         this.scheme = checkNotNull(scheme);
         this.hosts = checkNotNull(hosts);
@@ -146,7 +146,7 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
         this.enableFullDocPrePostImage = enableFullDocPrePostImage;
         this.noCursorTimeout = noCursorTimeout;
         this.skipSnapshotBackfill = skipSnapshotBackfill;
-        this.scanNewlyAddedTableEnabled = enableScanNewlyAddedTable;
+        this.scanNewlyAddedTableEnabled = scanNewlyAddedTableEnabled;
     }
 
     @Override

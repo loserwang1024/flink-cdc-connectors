@@ -20,20 +20,21 @@ import org.apache.flink.api.connector.source.SourceEvent;
 
 /**
  * The {@link SourceEvent} that {@link
- * com.ververica.cdc.connectors.postgres.source.enumerator.PostgresSourceEnumerator} broadcasts to
- * {@link com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader} to tell the
- * source reader to update the binlog split after newly added table snapshot splits finished.
+ * com.ververica.cdc.connectors.postgres.source.reader.PostgresSourceReader} broadcasts to {@link
+ * com.ververica.cdc.connectors.postgres.source.enumerator.PostgresSourceEnumerator} to tell the
+ * enumerator that offset commit is already suspend. Then the enumerator can assign new added
+ * table's snapshot splits.
  */
-public class SyncAssignStatus implements SourceEvent {
+public class ReportCommitSuspendEvent implements SourceEvent {
     private static final long serialVersionUID = 1L;
 
-    private int statusCode;
+    private final boolean isCommitOffset;
 
-    public SyncAssignStatus(int statusCode) {
-        this.statusCode = statusCode;
+    public ReportCommitSuspendEvent(boolean isCommitOffset) {
+        this.isCommitOffset = isCommitOffset;
     }
 
-    public int getStatusCode() {
-        return statusCode;
+    public boolean isCommitOffset() {
+        return isCommitOffset;
     }
 }

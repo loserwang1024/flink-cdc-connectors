@@ -29,17 +29,22 @@ import com.ververica.cdc.connectors.base.source.meta.split.SourceSplitSerializer
 import com.ververica.cdc.connectors.base.source.meta.split.StreamSplit;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader;
 import com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReaderContext;
-import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatus;
-import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatusAck;
+import com.ververica.cdc.connectors.postgres.source.events.ReportCommitSuspendEvent;
+import com.ververica.cdc.connectors.postgres.source.events.SyncAssignStatusEvent;
 
 import java.util.function.Supplier;
 
+import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isNewlyAddedAssigning;
+import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isNewlyAddedAssigningFinished;
+import static com.ververica.cdc.connectors.base.source.assigner.AssignerStatus.isNewlyAddedAssigningSnapshotFinished;
+
 /**
- * todo: The multi-parallel source reader for table snapshot phase from {@link SnapshotSplit} and
+ * The multi-parallel postgres source reader for table snapshot phase from {@link SnapshotSplit} and
  * then single-parallel source reader for table stream phase from {@link StreamSplit}.
  */
 public class PostgresSourceReader extends IncrementalSourceReader {
 
+    /** whether to commit offset. */
     private volatile boolean isCommitOffset = false;
 
     public PostgresSourceReader(
@@ -64,21 +69,22 @@ public class PostgresSourceReader extends IncrementalSourceReader {
 
     @Override
     public void handleSourceEvents(SourceEvent sourceEvent) {
-        if (sourceEvent instanceof SyncAssignStatus) {
-            int statusCode = ((SyncAssignStatus) sourceEvent).getStatusCode();
-            // only when status is not in process of new scan table period and the binlog split is
+        if (sourceEvent instanceof SyncAssignStatusEvent) {
+            AssignerStatus status =
+                    AssignerStatus.fromStatusCode(
+                            ((SyncAssignStatusEvent) sourceEvent).getAssignStatusCode());
+            // In the following situations, do not commit offset:
+            // 1. Assign status is INITIAL_ASSIGNING and NEWLY_ADDED_ASSIGNING_FINISHED
+            // 2. Assign status is NEWLY_ADDED_ASSIGNING_FINISHED, but stream split is still not
             // added back.
-            // 1. 状态为INITIAL_ASSIGNING和NEWLY_ADDED_ASSIGNING_SNAPSHOT_FINISHED
-            // 2. 即使已经完成动态加表，状态为NEWLY_ADDED_ASSIGNING_FINISHED， 也需要等到binlog被加回去
-            if (statusCode == AssignerStatus.NEWLY_ADDED_ASSIGNING.getStatusCode()) {
-                isCommitOffset = false;
-                context.sendSourceEventToCoordinator(new SyncAssignStatusAck());
-            } else if (statusCode == AssignerStatus.NEWLY_ADDED_ASSIGNING_FINISHED.getStatusCode()
-                    && (suspendedStreamSplit == null || uncompletedStreamSplits.isEmpty())) {
+            if (isNewlyAddedAssigning(status)
+                    || isNewlyAddedAssigningSnapshotFinished(status)
+                    || (isNewlyAddedAssigningFinished(status) & isStreamSplitSuspend())) {
                 isCommitOffset = false;
             } else {
                 isCommitOffset = true;
             }
+            context.sendSourceEventToCoordinator(new ReportCommitSuspendEvent(isCommitOffset));
         } else {
             super.handleSourceEvents(sourceEvent);
         }
@@ -86,8 +92,13 @@ public class PostgresSourceReader extends IncrementalSourceReader {
 
     @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
+        // Only if scan newly added table is enable, offset commit is controlled by isCommitOffset.
         if (!sourceConfig.isScanNewlyAddedTableEnabled() || isCommitOffset) {
             super.notifyCheckpointComplete(checkpointId);
         }
+    }
+
+    private boolean isStreamSplitSuspend() {
+        return suspendedStreamSplit == null || uncompletedStreamSplits.isEmpty();
     }
 }

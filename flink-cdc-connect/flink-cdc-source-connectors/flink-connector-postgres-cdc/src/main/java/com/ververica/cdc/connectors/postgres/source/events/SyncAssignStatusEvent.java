@@ -19,13 +19,22 @@ package com.ververica.cdc.connectors.postgres.source.events;
 import org.apache.flink.api.connector.source.SourceEvent;
 
 /**
- * todo: 修正. The {@link SourceEvent} that {@link
- * com.ververica.cdc.connectors.postgres.source.enumerator.PostgresSourceEnumerator} broadcasts to
- * {@link com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader} to tell the
- * source reader to update the binlog split after newly added table snapshot splits finished.
+ * The {@link SourceEvent} that {@link
+ * com.ververica.cdc.connectors.postgres.source.enumerator.PostgresSourceEnumerator} send to {@link
+ * com.ververica.cdc.connectors.postgres.source.reader.PostgresSourceReader}, which includes current
+ * assign status. PostgresSourceReader will suspend or restart offset commit depends on assign
+ * status.
  */
-public class SyncAssignStatusAck implements SourceEvent {
+public class SyncAssignStatusEvent implements SourceEvent {
     private static final long serialVersionUID = 1L;
 
-    public SyncAssignStatusAck() {}
+    private int assignStatusCode;
+
+    public SyncAssignStatusEvent(int assignStatusCode) {
+        this.assignStatusCode = assignStatusCode;
+    }
+
+    public int getAssignStatusCode() {
+        return assignStatusCode;
+    }
 }
