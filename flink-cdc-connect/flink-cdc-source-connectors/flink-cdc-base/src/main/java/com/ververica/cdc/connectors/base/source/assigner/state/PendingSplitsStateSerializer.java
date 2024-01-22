@@ -42,8 +42,13 @@ import static com.ververica.cdc.connectors.base.source.meta.split.SourceSplitSer
 
 /**
  * The {@link SimpleVersionedSerializer Serializer} for the {@link PendingSplitsState}. The
- * modification of the 6th version: change isAssignerFinished(boolean) to assignStatus in
- * SnapshotPendingSplitsState, which represents more assign status,
+ * modification of the 6th version:
+ *
+ * <p>1. Change isAssignerFinished(boolean) to assignStatus in SnapshotPendingSplitsState to
+ * represent a more comprehensive assignment status.
+ *
+ * <p>2. Add streamSplitTaskId(int) to HybridPendingSplitsState, which represents the task ID
+ * assigned to the stream split.
  */
 public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<PendingSplitsState> {
 

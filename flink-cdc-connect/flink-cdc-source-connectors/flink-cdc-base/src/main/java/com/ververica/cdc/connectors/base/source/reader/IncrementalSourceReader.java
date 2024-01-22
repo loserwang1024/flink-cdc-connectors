@@ -79,12 +79,23 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
 
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceReader.class);
 
-    /** todo: description suspend split: which. */
+    /**
+     * Snapshot spit which is read finished, but not notify and receive ack event from enumerator to
+     * update snapshot splits information (such as high_watermark).
+     */
     private final Map<String, SnapshotSplit> finishedUnackedSplits;
-    /** todo: description suspend split: which. */
+
+    /**
+     * Stream split which lack and wait for snapshot splits information from enumerator, will
+     * addSplit and add back to split reader if snapshot split information is enough.
+     */
     protected final Map<String, StreamSplit> uncompletedStreamSplits;
 
-    /** todo: description suspend split: which. */
+    /**
+     * Steam split which is suspended reading in split reader and wait for
+     * LatestFinishedSplitsNumberEvent from enumerator, will addSpilt and become
+     * uncompletedStreamSplits later.
+     */
     protected volatile StreamSplit suspendedStreamSplit;
 
     private final int subtaskId;
@@ -157,7 +168,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
     @Override
     protected void onSplitFinished(Map<String, SourceSplitState> finishedSplitIds) {
         boolean requestNextSplit = true;
-        if (isNewlyAddedTableSplitAndBinlogSplit(finishedSplitIds)) {
+        if (isNewlyAddedTableSplitAndStreamSplit(finishedSplitIds)) {
             SourceSplitState mySqlBinlogSplitState = finishedSplitIds.remove(STREAM_SPLIT_ID);
             finishedSplitIds
                     .values()
@@ -210,8 +221,6 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
                     finishedUnackedSplits.put(sourceSplit.splitId(), sourceSplit.asSnapshotSplit());
                 }
             }
-
-            // todo: 这里为何不在外面report, isNewlyAddedTableSplitAndBinlogSplit也有可能啊
             reportFinishedSnapshotSplitsIfNeed();
         }
         if (requestNextSplit) {
@@ -220,11 +229,11 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
     }
 
     /**
-     * During the newly added table process, for the source reader who holds the binlog split, we
-     * return the latest finished snapshot split and binlog split as well, this design let us have
-     * opportunity to exchange binlog reading and snapshot reading, we put the binlog split back.
+     * During the newly added table process, for the source reader who holds the stream split, we
+     * return the latest finished snapshot split and stream split as well, this design let us have
+     * opportunity to exchange stream reading and snapshot reading, we put the stream split back.
      */
-    private boolean isNewlyAddedTableSplitAndBinlogSplit(
+    private boolean isNewlyAddedTableSplitAndStreamSplit(
             Map<String, SourceSplitState> finishedSplitIds) {
         return finishedSplitIds.containsKey(STREAM_SPLIT_ID) && finishedSplitIds.size() == 2;
     }
@@ -414,7 +423,6 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
             final StreamSplit binlogSplit =
                     toNormalStreamSplit(suspendedStreamSplit, finishedSplitsSize);
             suspendedStreamSplit = null;
-            // todo: 如果add back，一执行岂不是又要暂停？
             this.addSplits(Collections.singletonList(binlogSplit));
 
             context.sendSourceEventToCoordinator(new StreamSplitUpdateAckEvent());

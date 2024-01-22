@@ -19,12 +19,13 @@ package com.ververica.cdc.connectors.base.source.assigner.state.version5;
 import com.ververica.cdc.connectors.base.source.assigner.state.PendingSplitsState;
 
 /**
- * The 5th version of HybridPendingSplitsState.
+ * The 5th version of HybridPendingSplitsState. The modification of the 6th version:
  *
- * <p>In the 5th version, PendingSplitsState and StreamPendingSplitsState are same with 4th. Change
- * isAssignerFinished(boolean) to assignStatus in SnapshotPendingSplitsState, which represents more
- * assign status. Thus, HybridPendingSplitsState which includes SnapshotPendingSplitsState is also
- * changed.
+ * <p>1. Change isAssignerFinished(boolean) to assignStatus in SnapshotPendingSplitsState to
+ * represent a more comprehensive assignment status.
+ *
+ * <p>2. Add streamSplitTaskId(int) to HybridPendingSplitsState, which represents the task ID
+ * assigned to the stream split.
  */
 public class HybridPendingSplitsStateVersion5 extends PendingSplitsState {
     private final SnapshotPendingSplitsStateVersion5 snapshotPendingSplits;
