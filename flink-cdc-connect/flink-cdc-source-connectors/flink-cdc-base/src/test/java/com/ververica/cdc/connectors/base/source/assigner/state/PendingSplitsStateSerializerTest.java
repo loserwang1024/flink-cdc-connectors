@@ -42,7 +42,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** Tests for {@link PendingSplitsStateSerializer}. */
-// todo: 新增streamSplitTaskId的测试
 public class PendingSplitsStateSerializerTest {
 
     private TableId tableId = TableId.parse("catalog.schema.table1");
@@ -55,27 +54,27 @@ public class PendingSplitsStateSerializerTest {
                 new PendingSplitsStateSerializer(constructSourceSplitSerializer());
         PendingSplitsState streamSplitsStateAfter =
                 pendingSplitsStateSerializer.deserializePendingSplitsState(
-                        5, pendingSplitsStateSerializer.serialize(streamPendingSplitsStateBefore));
+                        6, pendingSplitsStateSerializer.serialize(streamPendingSplitsStateBefore));
         Assert.assertEquals(streamPendingSplitsStateBefore, streamSplitsStateAfter);
 
         SnapshotPendingSplitsState snapshotPendingSplitsStateBefore =
                 constructSnapshotPendingSplitsState(AssignerStatus.NEWLY_ADDED_ASSIGNING);
         PendingSplitsState snapshotPendingSplitsStateAfter =
                 pendingSplitsStateSerializer.deserializePendingSplitsState(
-                        5,
+                        6,
                         pendingSplitsStateSerializer.serialize(snapshotPendingSplitsStateBefore));
         Assert.assertEquals(snapshotPendingSplitsStateBefore, snapshotPendingSplitsStateAfter);
 
         HybridPendingSplitsState hybridPendingSplitsStateBefore =
-                new HybridPendingSplitsState(snapshotPendingSplitsStateBefore, false);
+                new HybridPendingSplitsState(snapshotPendingSplitsStateBefore, false, 0);
         PendingSplitsState hybridPendingSplitsStateAfter =
                 pendingSplitsStateSerializer.deserializePendingSplitsState(
-                        5, pendingSplitsStateSerializer.serialize(hybridPendingSplitsStateBefore));
+                        6, pendingSplitsStateSerializer.serialize(hybridPendingSplitsStateBefore));
         Assert.assertEquals(hybridPendingSplitsStateBefore, hybridPendingSplitsStateAfter);
     }
 
     @Test
-    public void testPendingSplitsStateSerializerCompabality() throws IOException {
+    public void testPendingSplitsStateSerializerCompatibility() throws IOException {
         StreamPendingSplitsState streamPendingSplitsStateBefore =
                 new StreamPendingSplitsState(true);
         PendingSplitsStateSerializer pendingSplitsStateSerializer =
@@ -100,7 +99,8 @@ public class PendingSplitsStateSerializerTest {
                 new HybridPendingSplitsState(
                         constructSnapshotPendingSplitsState(
                                 AssignerStatus.INITIAL_ASSIGNING_FINISHED),
-                        false);
+                        false,
+                        -1);
         PendingSplitsState hybridPendingSplitsStateAfter =
                 pendingSplitsStateSerializer.deserializePendingSplitsState(
                         5,

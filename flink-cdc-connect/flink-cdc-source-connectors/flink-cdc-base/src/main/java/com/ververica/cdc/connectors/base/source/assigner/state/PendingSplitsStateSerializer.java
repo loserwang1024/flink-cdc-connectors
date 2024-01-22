@@ -168,9 +168,7 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
             HybridPendingSplitsState state, DataOutputSerializer out) throws IOException {
         serializeSnapshotPendingSplitsState(state.getSnapshotPendingSplits(), out);
         out.writeBoolean(state.isStreamSplitAssigned());
-        if (getVersion() == 6) {
-            out.writeInt(state.getStreamSplitTaskId());
-        }
+        out.writeInt(state.getStreamSplitTaskId());
     }
 
     private void serializeStreamPendingSplitsState(
@@ -292,7 +290,7 @@ public class PendingSplitsStateSerializer implements SimpleVersionedSerializer<P
                 deserializeSnapshotPendingSplitsState(version, splitVersion, in);
         boolean isStreamSplitAssigned = in.readBoolean();
         int streamSplitTaskId = -1;
-        if (getVersion() == 6) {
+        if (version >= 6) {
             streamSplitTaskId = in.readInt();
         }
         return new HybridPendingSplitsState(
