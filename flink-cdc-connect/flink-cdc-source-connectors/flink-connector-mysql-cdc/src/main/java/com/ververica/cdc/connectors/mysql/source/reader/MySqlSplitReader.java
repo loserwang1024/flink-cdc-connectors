@@ -135,8 +135,6 @@ public class MySqlSplitReader implements SplitReader<SourceRecords, MySqlSplit> 
                     closeSnapshotReader();
                     closeBinlogReader();
                 } else {
-                    // todo: 如果这里能够同时取多条snapshot-split, 上一个finishedSplit未包含这个新的，是否会出问题？
-                    // todo: 上一个split完成，直接触发回收
                     records = forRecords(dataIt);
                     MySqlSplit nextSplit = snapshotSplits.poll();
                     if (nextSplit != null) {

@@ -128,7 +128,7 @@ public class PostgresSourceConfigFactory extends JdbcSourceConfigFactory {
                 connectionPoolSize,
                 chunkKeyColumn,
                 skipSnapshotBackfill,
-                isScanNewlyAddedTableEnabled);
+                scanNewlyAddedTableEnabled);
     }
 
     /**

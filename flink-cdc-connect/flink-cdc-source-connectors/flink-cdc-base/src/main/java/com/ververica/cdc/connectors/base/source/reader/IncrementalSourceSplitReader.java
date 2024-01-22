@@ -180,8 +180,6 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
                     closeScanFetcher();
                     closeStreamFetcher();
                 } else {
-                    // todo: 如果这里能够同时取多条snapshot-split, 上一个finishedSplit未包含这个新的，是否会出问题？
-                    // todo: 上一个split完成，直接触发回收
                     records = forRecords(dataIt);
                     SnapshotSplit nextSplit = snapshotSplits.poll();
                     if (nextSplit != null) {

@@ -85,7 +85,7 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
 
     private final boolean skipSnapshotBackfill;
 
-    private final boolean isScanNewlyAddedTableEnabled;
+    private final boolean scanNewlyAddedTableEnabled;
 
     // --------------------------------------------------------------------------------------------
     // Mutable attributes
@@ -154,7 +154,7 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
         this.metadataKeys = Collections.emptyList();
         this.closeIdleReaders = closeIdleReaders;
         this.skipSnapshotBackfill = skipSnapshotBackfill;
-        this.isScanNewlyAddedTableEnabled = isScanNewlyAddedTableEnabled;
+        this.scanNewlyAddedTableEnabled = isScanNewlyAddedTableEnabled;
     }
 
     @Override
@@ -215,7 +215,7 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                             .heartbeatInterval(heartbeatInterval)
                             .closeIdleReaders(closeIdleReaders)
                             .skipSnapshotBackfill(skipSnapshotBackfill)
-                            .scanNewlyAddedTable(isScanNewlyAddedTableEnabled)
+                            .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
                             .build();
             return SourceProvider.of(parallelSource);
         } else {
@@ -283,7 +283,7 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                         chunkKeyColumn,
                         closeIdleReaders,
                         skipSnapshotBackfill,
-                        isScanNewlyAddedTableEnabled);
+                        scanNewlyAddedTableEnabled);
         source.metadataKeys = metadataKeys;
         source.producedDataType = producedDataType;
         return source;
@@ -326,7 +326,7 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                 && Objects.equals(chunkKeyColumn, that.chunkKeyColumn)
                 && Objects.equals(closeIdleReaders, that.closeIdleReaders)
                 && Objects.equals(skipSnapshotBackfill, that.skipSnapshotBackfill)
-                && Objects.equals(isScanNewlyAddedTableEnabled, that.isScanNewlyAddedTableEnabled);
+                && Objects.equals(scanNewlyAddedTableEnabled, that.scanNewlyAddedTableEnabled);
     }
 
     @Override
@@ -360,7 +360,7 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                 chunkKeyColumn,
                 closeIdleReaders,
                 skipSnapshotBackfill,
-                isScanNewlyAddedTableEnabled);
+                scanNewlyAddedTableEnabled);
     }
 
     @Override

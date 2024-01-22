@@ -22,7 +22,7 @@ import org.apache.flink.api.connector.source.SourceEvent;
  * The {@link SourceEvent} that {@link
  * com.ververica.cdc.connectors.base.source.reader.IncrementalSourceReader} sends to {@link
  * com.ververica.cdc.connectors.base.source.enumerator.IncrementalSourceEnumerator} to notify the
- * binlog split reader has been updated.
+ * stream split reader has been updated.
  */
 public class StreamSplitUpdateAckEvent implements SourceEvent {
 

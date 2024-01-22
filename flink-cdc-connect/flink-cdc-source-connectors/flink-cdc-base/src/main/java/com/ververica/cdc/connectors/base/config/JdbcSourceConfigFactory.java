@@ -57,7 +57,7 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
     protected String chunkKeyColumn;
     protected boolean skipSnapshotBackfill =
             JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue();
-    protected boolean isScanNewlyAddedTableEnabled =
+    protected boolean scanNewlyAddedTableEnabled =
             JdbcSourceOptions.SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue();
 
     /** Integer port number of the database server. */
@@ -245,8 +245,8 @@ public abstract class JdbcSourceConfigFactory implements Factory<JdbcSourceConfi
         return this;
     }
 
-    public JdbcSourceConfigFactory scanNewlyAddedTable(boolean isScanNewlyAddedTableEnabled) {
-        this.isScanNewlyAddedTableEnabled = isScanNewlyAddedTableEnabled;
+    public JdbcSourceConfigFactory scanNewlyAddedTableEnabled(boolean scanNewlyAddedTableEnabled) {
+        this.scanNewlyAddedTableEnabled = scanNewlyAddedTableEnabled;
         return this;
     }
 

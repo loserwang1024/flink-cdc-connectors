@@ -64,7 +64,7 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
     private boolean disableCursorTimeout = true;
     protected boolean skipSnapshotBackfill = false;
 
-    protected boolean enableScanNewlyAddedTable = false;
+    protected boolean scanNewlyAddedTableEnabled = false;
 
     /** The protocol connected to MongoDB. For example mongodb or mongodb+srv. */
     public MongoDBSourceConfigFactory scheme(String scheme) {
@@ -267,8 +267,9 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
         return this;
     }
 
-    public MongoDBSourceConfigFactory enableScanNewlyAddedTable(boolean enableScanNewlyAddedTable) {
-        this.enableScanNewlyAddedTable = enableScanNewlyAddedTable;
+    public MongoDBSourceConfigFactory scanNewlyAddedTableEnabled(
+            boolean scanNewlyAddedTableEnabled) {
+        this.scanNewlyAddedTableEnabled = scanNewlyAddedTableEnabled;
         return this;
     }
 
@@ -297,6 +298,6 @@ public class MongoDBSourceConfigFactory implements Factory<MongoDBSourceConfig> 
                 enableFullDocPrePostImage,
                 disableCursorTimeout,
                 skipSnapshotBackfill,
-                enableScanNewlyAddedTable);
+                scanNewlyAddedTableEnabled);
     }
 }

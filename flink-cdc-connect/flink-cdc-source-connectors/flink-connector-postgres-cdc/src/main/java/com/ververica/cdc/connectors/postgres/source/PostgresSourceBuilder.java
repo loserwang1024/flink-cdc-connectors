@@ -273,8 +273,9 @@ public class PostgresSourceBuilder<T> {
         return this;
     }
 
-    public PostgresSourceBuilder<T> scanNewlyAddedTable(boolean isScanNewlyAddedTableEnabled) {
-        this.configFactory.scanNewlyAddedTable(isScanNewlyAddedTableEnabled);
+    /** Whether the {@link PostgresSourceEnumerator} should scan the newly added tables or not. */
+    public PostgresSourceBuilder<T> scanNewlyAddedTableEnabled(boolean scanNewlyAddedTableEnabled) {
+        this.configFactory.scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled);
         return this;
     }
 
