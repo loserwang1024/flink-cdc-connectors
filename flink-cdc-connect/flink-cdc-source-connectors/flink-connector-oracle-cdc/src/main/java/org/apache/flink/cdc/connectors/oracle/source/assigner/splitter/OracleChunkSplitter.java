@@ -32,8 +32,6 @@ import io.debezium.relational.Column;
 import io.debezium.relational.Table;
 import io.debezium.relational.TableId;
 import oracle.sql.ROWID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -44,8 +42,6 @@ import java.sql.SQLException;
  */
 @Internal
 public class OracleChunkSplitter extends JdbcSourceChunkSplitter {
-
-    private static final Logger LOG = LoggerFactory.getLogger(OracleChunkSplitter.class);
 
     public OracleChunkSplitter(JdbcSourceConfig sourceConfig, JdbcDataSourceDialect dialect) {
         super(sourceConfig, dialect);
