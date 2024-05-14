@@ -22,6 +22,7 @@ import org.apache.flink.table.api.ValidationException;
 import io.debezium.jdbc.JdbcConnection;
 import io.debezium.relational.Column;
 import io.debezium.relational.Table;
+import io.debezium.relational.TableId;
 
 import javax.annotation.Nullable;
 
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
 import static org.apache.flink.cdc.connectors.base.utils.SourceRecordUtils.rowToArray;
 
 /** Utilities to split chunks of table. */
-public class JdbcChunkUtil {
+public class JdbcChunkUtils {
 
     /**
      * Query the maximum and minimum value of the column in the table. e.g. query string <code>
@@ -44,10 +45,14 @@ public class JdbcChunkUtil {
      * @param columnName column name.
      * @return maximum and minimum value.
      */
-    public static Object[] queryMinMax(JdbcConnection jdbc, String tableId, String columnName)
+    public static Object[] queryMinMax(JdbcConnection jdbc, TableId tableId, String columnName)
             throws SQLException {
         final String minMaxQuery =
-                String.format("SELECT MIN(%s), MAX(%s) FROM %s", columnName, columnName, tableId);
+                String.format(
+                        "SELECT MIN(%s), MAX(%s) FROM %s",
+                        jdbc.quotedColumnIdString(columnName),
+                        jdbc.quotedColumnIdString(columnName),
+                        jdbc.quotedTableIdString(tableId));
         return jdbc.queryAndMap(
                 minMaxQuery,
                 rs -> {
@@ -74,11 +79,14 @@ public class JdbcChunkUtil {
      * @return minimum value.
      */
     public static Object queryMin(
-            JdbcConnection jdbc, String tableId, String columnName, Object excludedLowerBound)
+            JdbcConnection jdbc, TableId tableId, String columnName, Object excludedLowerBound)
             throws SQLException {
         final String minQuery =
                 String.format(
-                        "SELECT MIN(%s) FROM %s WHERE %s > ?", columnName, tableId, columnName);
+                        "SELECT MIN(%s) FROM %s WHERE %s > ?",
+                        jdbc.quotedColumnIdString(columnName),
+                        jdbc.quotedTableIdString(tableId),
+                        jdbc.quotedColumnIdString(columnName));
         return jdbc.prepareQueryAndMap(
                 minQuery,
                 ps -> ps.setObject(1, excludedLowerBound),

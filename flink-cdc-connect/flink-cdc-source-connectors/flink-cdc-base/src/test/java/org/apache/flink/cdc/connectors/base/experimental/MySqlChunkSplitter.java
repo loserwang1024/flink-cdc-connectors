@@ -61,14 +61,4 @@ public class MySqlChunkSplitter extends JdbcSourceChunkSplitter {
     protected DataType fromDbzColumn(Column splitColumn) {
         return MySqlTypeUtils.fromDbzColumn(splitColumn);
     }
-
-    @Override
-    protected String quote(String dbOrTableName) {
-        return MySqlUtils.quote(dbOrTableName);
-    }
-
-    @Override
-    protected String quote(TableId tableId) {
-        return MySqlUtils.quote(tableId);
-    }
 }

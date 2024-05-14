@@ -21,7 +21,7 @@ import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.JdbcDataSourceDialect;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
-import org.apache.flink.cdc.connectors.base.source.utils.JdbcChunkUtil;
+import org.apache.flink.cdc.connectors.base.source.utils.JdbcChunkUtils;
 import org.apache.flink.cdc.connectors.base.utils.ObjectUtils;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
@@ -202,10 +202,6 @@ public abstract class JdbcSourceChunkSplitter implements ChunkSplitter {
         return distributionFactor;
     }
 
-    protected abstract String quote(String dbOrTableName);
-
-    protected abstract String quote(TableId tableId);
-
     /**
      * Get the column which is seen as chunk key.
      *
@@ -214,7 +210,7 @@ public abstract class JdbcSourceChunkSplitter implements ChunkSplitter {
      *     primary key instead. @Column the column which is seen as chunk key.
      */
     protected Column getSplitColumn(Table table, @Nullable String chunkKeyColumn) {
-        return JdbcChunkUtil.getSplitColumn(table, chunkKeyColumn);
+        return JdbcChunkUtils.getSplitColumn(table, chunkKeyColumn);
     }
 
     /** ChunkEnd less than or equal to max. */
@@ -246,7 +242,7 @@ public abstract class JdbcSourceChunkSplitter implements ChunkSplitter {
     private List<ChunkRange> splitTableIntoChunks(
             JdbcConnection jdbc, TableId tableId, Column splitColumn) throws SQLException {
         final String splitColumnName = splitColumn.name();
-        final Object[] minMax = JdbcChunkUtil.queryMinMax(jdbc, quote(tableId), splitColumnName);
+        final Object[] minMax = JdbcChunkUtils.queryMinMax(jdbc, tableId, splitColumnName);
         final Object min = minMax[0];
         final Object max = minMax[1];
         if (min == null || max == null || min.equals(max)) {
@@ -363,8 +359,7 @@ public abstract class JdbcSourceChunkSplitter implements ChunkSplitter {
         if (Objects.equals(previousChunkEnd, chunkEnd)) {
             // we don't allow equal chunk start and end,
             // should query the next one larger than chunkEnd
-            chunkEnd =
-                    JdbcChunkUtil.queryMin(jdbc, quote(tableId), quote(splitColumnName), chunkEnd);
+            chunkEnd = JdbcChunkUtils.queryMin(jdbc, tableId, splitColumnName, chunkEnd);
         }
         if (isChunkEndGeMax(chunkEnd, max)) {
             return null;

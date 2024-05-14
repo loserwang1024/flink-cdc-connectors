@@ -47,16 +47,6 @@ public class Db2ChunkSplitter extends JdbcSourceChunkSplitter {
     }
 
     @Override
-    protected String quote(String dbOrTableName) {
-        return Db2Utils.quote(dbOrTableName);
-    }
-
-    @Override
-    protected String quote(TableId tableId) {
-        return Db2Utils.quote(tableId);
-    }
-
-    @Override
     protected Object queryNextChunkMax(
             JdbcConnection jdbc,
             TableId tableId,

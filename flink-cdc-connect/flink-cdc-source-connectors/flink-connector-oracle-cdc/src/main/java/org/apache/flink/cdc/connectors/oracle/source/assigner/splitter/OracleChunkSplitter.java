@@ -117,14 +117,4 @@ public class OracleChunkSplitter extends JdbcSourceChunkSplitter {
         // Use the ROWID column as the chunk key column by default for oracle cdc connector
         return ChunkUtils.getChunkKeyColumn(table, chunkKeyColumn);
     }
-
-    @Override
-    protected String quote(String dbOrTableName) {
-        return OracleUtils.quote(dbOrTableName);
-    }
-
-    @Override
-    protected String quote(TableId tableId) {
-        return OracleUtils.quoteSchemaAndTable(tableId);
-    }
 }

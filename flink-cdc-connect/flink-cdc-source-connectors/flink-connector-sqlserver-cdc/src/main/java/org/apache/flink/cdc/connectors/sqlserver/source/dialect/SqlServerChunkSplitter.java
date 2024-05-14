@@ -64,14 +64,4 @@ public class SqlServerChunkSplitter extends JdbcSourceChunkSplitter {
             throws SQLException {
         return SqlServerUtils.queryApproximateRowCnt(jdbc, tableId);
     }
-
-    @Override
-    protected String quote(String dbOrTableName) {
-        return SqlServerUtils.quote(dbOrTableName);
-    }
-
-    @Override
-    protected String quote(TableId tableId) {
-        return SqlServerUtils.quote(tableId);
-    }
 }

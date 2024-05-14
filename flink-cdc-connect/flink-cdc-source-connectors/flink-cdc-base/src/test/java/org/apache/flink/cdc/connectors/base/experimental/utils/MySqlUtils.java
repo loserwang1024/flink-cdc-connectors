@@ -80,7 +80,7 @@ public class MySqlUtils {
             int chunkSize,
             Object includedLowerBound)
             throws SQLException {
-        String quotedColumn = quote(splitColumnName);
+        String quotedColumn = jdbc.quotedColumnIdString(splitColumnName);
         String query =
                 String.format(
                         "SELECT MAX(%s) FROM ("
@@ -88,7 +88,7 @@ public class MySqlUtils {
                                 + ") AS T",
                         quotedColumn,
                         quotedColumn,
-                        quote(tableId),
+                        jdbc.quotedTableIdString(tableId),
                         quotedColumn,
                         quotedColumn,
                         chunkSize);
@@ -269,20 +269,6 @@ public class MySqlUtils {
         return (RowType)
                 ROW(FIELD(splitColumn.name(), MySqlTypeUtils.fromDbzColumn(splitColumn)))
                         .getLogicalType();
-    }
-
-    public static Column getSplitColumn(Table table) {
-        List<Column> primaryKeys = table.primaryKeyColumns();
-        if (primaryKeys.isEmpty()) {
-            throw new ValidationException(
-                    String.format(
-                            "Incremental snapshot for tables requires primary key,"
-                                    + " but table %s doesn't have primary key.",
-                            table.id()));
-        }
-
-        // use first field in primary key as the split key
-        return primaryKeys.get(0);
     }
 
     public static String quote(String dbOrTableName) {

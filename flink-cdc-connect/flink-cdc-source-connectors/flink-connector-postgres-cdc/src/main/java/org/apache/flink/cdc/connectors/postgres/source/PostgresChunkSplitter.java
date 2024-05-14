@@ -66,14 +66,4 @@ public class PostgresChunkSplitter extends JdbcSourceChunkSplitter {
     protected DataType fromDbzColumn(Column splitColumn) {
         return PostgresTypeUtils.fromDbzColumn(splitColumn);
     }
-
-    @Override
-    protected String quote(String dbOrTableName) {
-        return PostgresQueryUtils.quote(dbOrTableName);
-    }
-
-    @Override
-    protected String quote(TableId tableId) {
-        return PostgresQueryUtils.quote(tableId);
-    }
 }
