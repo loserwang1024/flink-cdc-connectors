@@ -31,34 +31,12 @@ import java.util.Iterator;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static org.apache.flink.cdc.connectors.base.utils.SourceRecordUtils.rowToArray;
-
 /** Query-related Utilities for Postgres CDC source. */
 public class PostgresQueryUtils {
 
     private static final Logger LOG = LoggerFactory.getLogger(PostgresQueryUtils.class);
 
     private PostgresQueryUtils() {}
-
-    public static Object[] queryMinMax(JdbcConnection jdbc, TableId tableId, String columnName)
-            throws SQLException {
-        final String minMaxQuery =
-                String.format(
-                        "SELECT MIN(%s), MAX(%s) FROM %s",
-                        quote(columnName), quote(columnName), quote(tableId));
-        return jdbc.queryAndMap(
-                minMaxQuery,
-                rs -> {
-                    if (!rs.next()) {
-                        // this should never happen
-                        throw new SQLException(
-                                String.format(
-                                        "No result returned after running query [%s]",
-                                        minMaxQuery));
-                    }
-                    return rowToArray(rs, 2);
-                });
-    }
 
     public static long queryApproximateRowCnt(JdbcConnection jdbc, TableId tableId)
             throws SQLException {
@@ -81,28 +59,6 @@ public class PostgresQueryUtils {
                     }
                     LOG.info("queryApproximateRowCnt: {} => {}", query, rs.getLong(1));
                     return rs.getLong(1);
-                });
-    }
-
-    public static Object queryMin(
-            JdbcConnection jdbc, TableId tableId, String columnName, Object excludedLowerBound)
-            throws SQLException {
-        final String query =
-                String.format(
-                        "SELECT MIN(%s) FROM %s WHERE %s > ?",
-                        quote(columnName), quote(tableId), quote(columnName));
-        return jdbc.prepareQueryAndMap(
-                query,
-                ps -> ps.setObject(1, excludedLowerBound),
-                rs -> {
-                    if (!rs.next()) {
-                        // this should never happen
-                        throw new SQLException(
-                                String.format(
-                                        "No result returned after running query [%s]", query));
-                    }
-                    LOG.info("{} => {}", query, rs.getObject(1));
-                    return rs.getObject(1);
                 });
     }
 
