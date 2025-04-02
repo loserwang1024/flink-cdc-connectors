@@ -17,19 +17,14 @@
 
 package org.apache.flink.cdc.connectors.oceanbase;
 
-import org.apache.flink.util.TestLogger;
+import org.apache.flink.cdc.connectors.oceanbase.testutils.OceanBaseCdcMetadata;
+import org.apache.flink.cdc.connectors.utils.StaticExternalResourceProxy;
+import org.apache.flink.table.planner.factories.TestValuesTableFactory;
+import org.apache.flink.table.utils.LegacyRowResource;
+import org.apache.flink.test.util.AbstractTestBase;
 
-import org.awaitility.Awaitility;
-import org.awaitility.core.ConditionTimeoutException;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.lifecycle.Startables;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.net.URL;
 import java.nio.file.Files;
@@ -41,147 +36,82 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static org.junit.Assert.assertNotNull;
 
 /** Basic class for testing OceanBase source. */
-public class OceanBaseTestBase extends TestLogger {
-
-    private static final Logger LOG = LoggerFactory.getLogger(OceanBaseTestBase.class);
+public abstract class OceanBaseTestBase extends AbstractTestBase {
 
     private static final Pattern COMMENT_PATTERN = Pattern.compile("^(.*)--.*$");
-    private static final Duration CONTAINER_STARTUP_TIMEOUT = Duration.ofMinutes(4);
 
-    public static final String NETWORK_MODE = "host";
+    @RegisterExtension
+    public static StaticExternalResourceProxy<LegacyRowResource> usesLegacyRows =
+            new StaticExternalResourceProxy<>(LegacyRowResource.INSTANCE);
 
-    // --------------------------------------------------------------------------------------------
-    // Attributes about host and port when network is on 'host' mode.
-    // --------------------------------------------------------------------------------------------
+    public static final Duration FETCH_TIMEOUT = Duration.ofSeconds(60);
 
-    protected static int getObServerSqlPort() {
-        return 2881;
+    protected abstract OceanBaseCdcMetadata metadata();
+
+    protected String commonOptionsString() {
+        return String.format(
+                " 'connector' = 'oceanbase-cdc', "
+                        + " 'username' = '%s', "
+                        + " 'password' = '%s', "
+                        + " 'hostname' = '%s', "
+                        + " 'port' = '%s', "
+                        + " 'compatible-mode' = '%s', "
+                        + " 'jdbc.driver' = '%s'",
+                metadata().getUsername(),
+                metadata().getPassword(),
+                metadata().getHostname(),
+                metadata().getPort(),
+                metadata().getCompatibleMode(),
+                metadata().getDriverClass());
     }
 
-    protected static int getLogProxyPort() {
-        return 2983;
+    protected String logProxyOptionsString() {
+        return String.format(
+                " 'working-mode' = 'memory',"
+                        + " 'tenant-name' = '%s',"
+                        + " 'logproxy.host' = '%s',"
+                        + " 'logproxy.port' = '%s'",
+                metadata().getTenantName(),
+                metadata().getLogProxyHost(),
+                metadata().getLogProxyPort());
     }
 
-    public static String getRsList() {
-        return "127.0.0.1:2882:2881";
+    protected String initialOptionsString() {
+        return " 'scan.startup.mode' = 'initial', "
+                + commonOptionsString()
+                + ", "
+                + logProxyOptionsString();
     }
 
-    // --------------------------------------------------------------------------------------------
-    // Attributes about user.
-    // From OceanBase 4.0.0.0 CE, we can only fetch the commit log of non-sys tenant.
-    // --------------------------------------------------------------------------------------------
-
-    public static final String OB_SYS_PASSWORD = "pswd";
-
-    protected static String getTenant() {
-        return "test";
+    protected String snapshotOptionsString() {
+        return " 'scan.startup.mode' = 'snapshot', " + commonOptionsString();
     }
 
-    protected static String getUsername() {
-        return "root@" + getTenant();
+    protected Connection getJdbcConnection() throws SQLException {
+        return DriverManager.getConnection(
+                metadata().getJdbcUrl(), metadata().getUsername(), metadata().getPassword());
     }
 
-    protected static String getPassword() {
-        return "test";
-    }
-
-    @ClassRule
-    public static final GenericContainer<?> OB_SERVER =
-            new GenericContainer<>("oceanbase/oceanbase-ce:4.2.0.0")
-                    .withNetworkMode(NETWORK_MODE)
-                    .withEnv("MODE", "slim")
-                    .withEnv("OB_ROOT_PASSWORD", OB_SYS_PASSWORD)
-                    .waitingFor(Wait.forLogMessage(".*boot success!.*", 1))
-                    .withStartupTimeout(CONTAINER_STARTUP_TIMEOUT)
-                    .withLogConsumer(new Slf4jLogConsumer(LOG));
-
-    @ClassRule
-    public static final GenericContainer<?> LOG_PROXY =
-            new GenericContainer<>("whhe/oblogproxy:1.1.3_4x")
-                    .withNetworkMode(NETWORK_MODE)
-                    .withEnv("OB_SYS_PASSWORD", OB_SYS_PASSWORD)
-                    .waitingFor(Wait.forLogMessage(".*boot success!.*", 1))
-                    .withStartupTimeout(CONTAINER_STARTUP_TIMEOUT)
-                    .withLogConsumer(new Slf4jLogConsumer(LOG));
-
-    @BeforeClass
-    public static void startContainers() {
-        LOG.info("Starting containers...");
-        Startables.deepStart(Stream.of(OB_SERVER, LOG_PROXY)).join();
-        LOG.info("Containers are started.");
-
-        try (Connection connection =
-                        DriverManager.getConnection(getJdbcUrl(""), getUsername(), "");
+    protected void setGlobalTimeZone(String serverTimeZone) throws SQLException {
+        try (Connection connection = getJdbcConnection();
                 Statement statement = connection.createStatement()) {
-            statement.execute(String.format("ALTER USER root IDENTIFIED BY '%s'", getPassword()));
-        } catch (SQLException e) {
-            LOG.error("Set test user password failed.", e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    @AfterClass
-    public static void stopContainers() {
-        LOG.info("Stopping containers...");
-        Stream.of(OB_SERVER, LOG_PROXY).forEach(GenericContainer::stop);
-        LOG.info("Containers are stopped.");
-    }
-
-    public static String getJdbcUrl(String databaseName) {
-        return "jdbc:mysql://"
-                + OB_SERVER.getHost()
-                + ":"
-                + getObServerSqlPort()
-                + "/"
-                + databaseName
-                + "?useSSL=false";
-    }
-
-    protected static Connection getJdbcConnection(String databaseName) throws SQLException {
-        return DriverManager.getConnection(getJdbcUrl(databaseName), getUsername(), getPassword());
-    }
-
-    private static void dropTestDatabase(Connection connection, String databaseName) {
-        try {
-            Awaitility.await(String.format("Dropping database %s", databaseName))
-                    .atMost(120, TimeUnit.SECONDS)
-                    .until(
-                            () -> {
-                                try {
-                                    String sql =
-                                            String.format(
-                                                    "DROP DATABASE IF EXISTS %s", databaseName);
-                                    connection.createStatement().execute(sql);
-                                    return true;
-                                } catch (SQLException e) {
-                                    LOG.warn(
-                                            String.format(
-                                                    "DROP DATABASE %s failed: {}", databaseName),
-                                            e.getMessage());
-                                    return false;
-                                }
-                            });
-        } catch (ConditionTimeoutException e) {
-            throw new IllegalStateException("Failed to drop test database", e);
+            statement.execute(String.format("SET GLOBAL time_zone = '%s';", serverTimeZone));
         }
     }
 
     protected void initializeTable(String sqlFile) {
-        final String ddlFile = String.format("ddl/%s.sql", sqlFile);
+        final String ddlFile =
+                String.format("ddl/%s/%s.sql", metadata().getCompatibleMode(), sqlFile);
         final URL ddlTestFile = getClass().getClassLoader().getResource(ddlFile);
-        assertNotNull("Cannot locate " + ddlFile, ddlTestFile);
-        try (Connection connection = getJdbcConnection("");
+        Assertions.assertThat(ddlTestFile).withFailMessage("Cannot locate " + ddlFile).isNotNull();
+        try (Connection connection = getJdbcConnection();
                 Statement statement = connection.createStatement()) {
-            dropTestDatabase(connection, sqlFile);
             final List<String> statements =
                     Arrays.stream(
                                     Files.readAllLines(Paths.get(ddlTestFile.toURI())).stream()
@@ -202,5 +132,36 @@ public class OceanBaseTestBase extends TestLogger {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static void waitForSinkSize(String sinkName, int expectedSize)
+            throws InterruptedException, TimeoutException {
+        long deadlineTimestamp = System.currentTimeMillis() + FETCH_TIMEOUT.toMillis();
+        while (System.currentTimeMillis() < deadlineTimestamp) {
+            if (sinkSize(sinkName) < expectedSize) {
+                Thread.sleep(100);
+            } else {
+                return;
+            }
+        }
+        throw new TimeoutException(
+                String.format(
+                        "Failed to fetch enough records in sink.\nExpected size: %d\nActual values: %s",
+                        expectedSize, TestValuesTableFactory.getRawResults(sinkName)));
+    }
+
+    public static int sinkSize(String sinkName) {
+        synchronized (TestValuesTableFactory.class) {
+            try {
+                return TestValuesTableFactory.getRawResultsAsStrings(sinkName).size();
+            } catch (IllegalArgumentException e) {
+                // job is not started yet
+                return 0;
+            }
+        }
+    }
+
+    public static void assertContainsInAnyOrder(List<String> expected, List<String> actual) {
+        Assertions.assertThat(actual).containsAll(expected);
     }
 }

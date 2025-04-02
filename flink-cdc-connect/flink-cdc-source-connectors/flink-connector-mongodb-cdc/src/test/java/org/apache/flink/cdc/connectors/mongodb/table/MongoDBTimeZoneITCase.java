@@ -26,24 +26,22 @@ import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.hamcrest.Matchers.containsInAnyOrder;
-import static org.junit.Assert.assertThat;
 
 /** Integration tests to check mongodb-cdc works well under different local timezone. */
-@RunWith(Parameterized.class)
-public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
+class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
 
     private final StreamExecutionEnvironment env =
             StreamExecutionEnvironment.getExecutionEnvironment();
@@ -51,29 +49,17 @@ public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
             StreamTableEnvironment.create(
                     env, EnvironmentSettings.newInstance().inStreamingMode().build());
 
-    private final String localTimeZone;
-
-    private final boolean parallelismSnapshot;
-
-    public MongoDBTimeZoneITCase(String localTimeZone, boolean parallelismSnapshot) {
-        this.localTimeZone = localTimeZone;
-        this.parallelismSnapshot = parallelismSnapshot;
+    private static Stream<Arguments> parameters() {
+        List<Arguments> parameterTuples = new ArrayList<>();
+        for (String timezone : new String[] {"Asia/Shanghai", "Europe/Berlin", "UTC"}) {
+            for (boolean parallelismSnapshot : new boolean[] {true, false}) {
+                parameterTuples.add(Arguments.of(timezone, parallelismSnapshot));
+            }
+        }
+        return parameterTuples.stream();
     }
 
-    @Parameterized.Parameters(name = "localTimeZone: {0}, parallelismSnapshot: {1}")
-    public static Object[] parameters() {
-        return new Object[][] {
-            new Object[] {"Asia/Shanghai", false},
-            new Object[] {"Europe/Berlin", false},
-            new Object[] {"UTC", false},
-            new Object[] {"Asia/Shanghai", true},
-            new Object[] {"Europe/Berlin", true},
-            new Object[] {"UTC", true}
-        };
-    }
-
-    @Before
-    public void before() {
+    void setup(boolean parallelismSnapshot) {
         TestValuesTableFactory.clearAllData();
         if (parallelismSnapshot) {
             env.setParallelism(DEFAULT_PARALLELISM);
@@ -83,11 +69,14 @@ public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
         }
     }
 
-    @Test
-    public void testTemporalTypesWithTimeZone() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testTemporalTypesWithTimeZone(String localTimeZone, boolean parallelismSnapshot)
+            throws Exception {
+        setup(parallelismSnapshot);
         tEnv.getConfig().setLocalTimeZone(ZoneId.of(localTimeZone));
 
-        String database = CONTAINER.executeCommandFileInSeparateDatabase("column_type_test");
+        String database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("column_type_test");
 
         String sourceDDL =
                 String.format(
@@ -108,7 +97,7 @@ public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
                                 + " 'database' = '%s',"
                                 + " 'collection' = '%s'"
                                 + ")",
-                        CONTAINER.getHostAndPort(),
+                        MONGO_CONTAINER.getHostAndPort(),
                         FLINK_USER,
                         FLINK_USER_PASSWORD,
                         database,
@@ -151,16 +140,19 @@ public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
         }
 
         List<String> actualSnapshot = fetchRows(iterator, expectedSnapshot.length);
-        assertThat(actualSnapshot, containsInAnyOrder(expectedSnapshot));
+        Assertions.assertThat(actualSnapshot).containsExactlyInAnyOrder(expectedSnapshot);
 
         result.getJobClient().get().cancel().get();
     }
 
-    @Test
-    public void testDateAndTimestampToStringWithTimeZone() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testDateAndTimestampToStringWithTimeZone(String localTimeZone, boolean parallelismSnapshot)
+            throws Exception {
+        setup(parallelismSnapshot);
         tEnv.getConfig().setLocalTimeZone(ZoneId.of(localTimeZone));
 
-        String database = CONTAINER.executeCommandFileInSeparateDatabase("column_type_test");
+        String database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("column_type_test");
 
         String sourceDDL =
                 String.format(
@@ -177,7 +169,7 @@ public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
                                 + " 'database' = '%s',"
                                 + " 'collection' = '%s'"
                                 + ")",
-                        CONTAINER.getHostAndPort(),
+                        MONGO_CONTAINER.getHostAndPort(),
                         FLINK_USER,
                         FLINK_USER_PASSWORD,
                         database,
@@ -214,7 +206,7 @@ public class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
         }
 
         List<String> actualSnapshot = fetchRows(iterator, expectedSnapshot.length);
-        assertThat(actualSnapshot, containsInAnyOrder(expectedSnapshot));
+        Assertions.assertThat(actualSnapshot).containsExactlyInAnyOrder(expectedSnapshot);
 
         result.getJobClient().get().cancel().get();
     }

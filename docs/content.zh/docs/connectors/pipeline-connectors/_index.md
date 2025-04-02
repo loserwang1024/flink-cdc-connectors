@@ -1,5 +1,5 @@
 ---
-title: Pipeline Connectors
+title: Pipeline 连接器
 bookCollapseSection: true
 weight: 1
 ---

@@ -21,6 +21,8 @@ import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
 
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges.TableChange;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -29,11 +31,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /** The split to describe the change log of database table(s). */
 public class StreamSplit extends SourceSplitBase {
+    private static final Logger LOG = LoggerFactory.getLogger(StreamSplit.class);
     public static final String STREAM_SPLIT_ID = "stream-split";
 
     private final Offset startingOffset;
@@ -43,6 +47,13 @@ public class StreamSplit extends SourceSplitBase {
     private final int totalFinishedSplitSize;
 
     private final boolean isSuspended;
+
+    /**
+     * Indicates whether initial state snapshot was completed right before this split. See
+     * io.debezium.connector.sqlserver.SqlServerOffsetContext#isSnapshotCompleted().
+     */
+    private final boolean isSnapshotCompleted;
+
     @Nullable transient byte[] serializedFormCache;
 
     public StreamSplit(
@@ -52,7 +63,8 @@ public class StreamSplit extends SourceSplitBase {
             List<FinishedSnapshotSplitInfo> finishedSnapshotSplitInfos,
             Map<TableId, TableChange> tableSchemas,
             int totalFinishedSplitSize,
-            boolean isSuspended) {
+            boolean isSuspended,
+            boolean isSnapshotCompleted) {
         super(splitId);
         this.startingOffset = startingOffset;
         this.endingOffset = endingOffset;
@@ -60,6 +72,7 @@ public class StreamSplit extends SourceSplitBase {
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
         this.isSuspended = isSuspended;
+        this.isSnapshotCompleted = isSnapshotCompleted;
     }
 
     public StreamSplit(
@@ -76,6 +89,7 @@ public class StreamSplit extends SourceSplitBase {
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
         this.isSuspended = false;
+        this.isSnapshotCompleted = false;
     }
 
     public Offset getStartingOffset() {
@@ -107,6 +121,10 @@ public class StreamSplit extends SourceSplitBase {
         return isSuspended;
     }
 
+    public boolean isSnapshotCompleted() {
+        return isSnapshotCompleted;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -120,6 +138,7 @@ public class StreamSplit extends SourceSplitBase {
         }
         StreamSplit that = (StreamSplit) o;
         return isSuspended == that.isSuspended
+                && isSnapshotCompleted == that.isSnapshotCompleted
                 && totalFinishedSplitSize == that.totalFinishedSplitSize
                 && Objects.equals(startingOffset, that.startingOffset)
                 && Objects.equals(endingOffset, that.endingOffset)
@@ -136,7 +155,8 @@ public class StreamSplit extends SourceSplitBase {
                 finishedSnapshotSplitInfos,
                 tableSchemas,
                 totalFinishedSplitSize,
-                isSuspended);
+                isSuspended,
+                isSnapshotCompleted);
     }
 
     @Override
@@ -151,6 +171,8 @@ public class StreamSplit extends SourceSplitBase {
                 + endingOffset
                 + ", isSuspended="
                 + isSuspended
+                + ", isSnapshotCompleted="
+                + isSnapshotCompleted
                 + '}';
     }
 
@@ -159,15 +181,24 @@ public class StreamSplit extends SourceSplitBase {
     // -------------------------------------------------------------------
     public static StreamSplit appendFinishedSplitInfos(
             StreamSplit streamSplit, List<FinishedSnapshotSplitInfo> splitInfos) {
+        // re-calculate the starting changelog offset after the new table added
+        Offset startingOffset = streamSplit.getStartingOffset();
+        for (FinishedSnapshotSplitInfo splitInfo : splitInfos) {
+            if (splitInfo.getHighWatermark().isBefore(startingOffset)) {
+                startingOffset = splitInfo.getHighWatermark();
+            }
+        }
         splitInfos.addAll(streamSplit.getFinishedSnapshotSplitInfos());
+
         return new StreamSplit(
                 streamSplit.splitId,
-                streamSplit.getStartingOffset(),
+                startingOffset,
                 streamSplit.getEndingOffset(),
                 splitInfos,
                 streamSplit.getTableSchemas(),
                 streamSplit.getTotalFinishedSplitSize(),
-                streamSplit.isSuspended);
+                streamSplit.isSuspended(),
+                streamSplit.isSnapshotCompleted());
     }
 
     /**
@@ -179,9 +210,20 @@ public class StreamSplit extends SourceSplitBase {
      */
     public static StreamSplit filterOutdatedSplitInfos(
             StreamSplit streamSplit, Predicate<TableId> currentTableFilter) {
+
+        Set<TableId> tablesToRemove =
+                streamSplit.getFinishedSnapshotSplitInfos().stream()
+                        .filter(i -> !currentTableFilter.test(i.getTableId()))
+                        .map(split -> split.getTableId())
+                        .collect(Collectors.toSet());
+        if (tablesToRemove.isEmpty()) {
+            return streamSplit;
+        }
+
+        LOG.info("Reader remove tables after restart: {}", tablesToRemove);
         List<FinishedSnapshotSplitInfo> allFinishedSnapshotSplitInfos =
                 streamSplit.getFinishedSnapshotSplitInfos().stream()
-                        .filter(i -> currentTableFilter.test(i.getTableId()))
+                        .filter(i -> !tablesToRemove.contains(i.getTableId()))
                         .collect(Collectors.toList());
         Map<TableId, TableChange> previousTableSchemas = streamSplit.getTableSchemas();
         Map<TableId, TableChange> newTableSchemas = new HashMap<>();
@@ -202,7 +244,8 @@ public class StreamSplit extends SourceSplitBase {
                 streamSplit.getTotalFinishedSplitSize()
                         - (streamSplit.getFinishedSnapshotSplitInfos().size()
                                 - allFinishedSnapshotSplitInfos.size()),
-                streamSplit.isSuspended());
+                streamSplit.isSuspended(),
+                streamSplit.isSnapshotCompleted());
     }
 
     public static StreamSplit fillTableSchemas(
@@ -215,7 +258,8 @@ public class StreamSplit extends SourceSplitBase {
                 streamSplit.getFinishedSnapshotSplitInfos(),
                 tableSchemas,
                 streamSplit.getTotalFinishedSplitSize(),
-                streamSplit.isSuspended);
+                streamSplit.isSuspended(),
+                streamSplit.isSnapshotCompleted());
     }
 
     public static StreamSplit toNormalStreamSplit(
@@ -227,7 +271,8 @@ public class StreamSplit extends SourceSplitBase {
                 suspendedStreamSplit.getFinishedSnapshotSplitInfos(),
                 suspendedStreamSplit.getTableSchemas(),
                 totalFinishedSplitSize,
-                false);
+                false,
+                suspendedStreamSplit.isSnapshotCompleted());
     }
 
     public static StreamSplit toSuspendedStreamSplit(StreamSplit normalStreamSplit) {
@@ -240,7 +285,8 @@ public class StreamSplit extends SourceSplitBase {
                         normalStreamSplit.getStartingOffset()),
                 normalStreamSplit.getTableSchemas(),
                 normalStreamSplit.getTotalFinishedSplitSize(),
-                true);
+                true,
+                normalStreamSplit.isSnapshotCompleted());
     }
 
     /**

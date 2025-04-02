@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.oceanbase.table;
 
+import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.Schema;
@@ -28,9 +29,9 @@ import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.factories.FactoryUtil;
-import org.apache.flink.util.ExceptionUtils;
 
-import org.junit.Test;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -40,12 +41,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 /** Test for {@link OceanBaseTableSource} created by {@link OceanBaseTableSourceFactory}. */
-public class OceanBaseTableFactoryTest {
+class OceanBaseTableFactoryTest {
 
     private static final ResolvedSchema SCHEMA =
             new ResolvedSchema(
@@ -85,7 +82,7 @@ public class OceanBaseTableFactoryTest {
     private static final String HOSTNAME = "127.0.0.1";
     private static final Integer PORT = 2881;
     private static final String COMPATIBLE_MODE = "mysql";
-    private static final String DRIVER_CLASS = "com.mysql.jdbc.Driver";
+    private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
     private static final String LOG_PROXY_HOST = "127.0.0.1";
     private static final Integer LOG_PROXY_PORT = 2983;
     private static final String LOG_PROXY_CLIENT_ID = "clientId";
@@ -93,7 +90,7 @@ public class OceanBaseTableFactoryTest {
     private static final String WORKING_MODE = "storage";
 
     @Test
-    public void testCommonProperties() {
+    void testCommonProperties() {
         Map<String, String> options = getRequiredOptions();
         options.put("database-name", DATABASE_NAME);
         options.put("table-name", TABLE_NAME);
@@ -104,7 +101,7 @@ public class OceanBaseTableFactoryTest {
         OceanBaseTableSource expectedSource =
                 new OceanBaseTableSource(
                         SCHEMA,
-                        StartupMode.LATEST_OFFSET,
+                        StartupOptions.latest(),
                         USERNAME,
                         PASSWORD,
                         TENANT_NAME,
@@ -113,8 +110,8 @@ public class OceanBaseTableFactoryTest {
                         TABLE_LIST,
                         SERVER_TIME_ZONE,
                         Duration.parse("PT" + CONNECT_TIMEOUT),
-                        null,
-                        null,
+                        HOSTNAME,
+                        PORT,
                         COMPATIBLE_MODE,
                         DRIVER_CLASS,
                         new Properties(),
@@ -125,19 +122,18 @@ public class OceanBaseTableFactoryTest {
                         RS_LIST,
                         null,
                         WORKING_MODE,
+                        new Properties(),
                         new Properties());
-        assertEquals(expectedSource, actualSource);
+        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
     @Test
-    public void testOptionalProperties() {
+    void testOptionalProperties() {
         Map<String, String> options = getRequiredOptions();
         options.put("scan.startup.mode", "initial");
         options.put("database-name", DATABASE_NAME);
         options.put("table-name", TABLE_NAME);
         options.put("table-list", TABLE_LIST);
-        options.put("hostname", HOSTNAME);
-        options.put("port", String.valueOf(PORT));
         options.put("compatible-mode", COMPATIBLE_MODE);
         options.put("jdbc.driver", DRIVER_CLASS);
         options.put("logproxy.client.id", LOG_PROXY_CLIENT_ID);
@@ -147,7 +143,7 @@ public class OceanBaseTableFactoryTest {
         OceanBaseTableSource expectedSource =
                 new OceanBaseTableSource(
                         SCHEMA,
-                        StartupMode.INITIAL,
+                        StartupOptions.initial(),
                         USERNAME,
                         PASSWORD,
                         TENANT_NAME,
@@ -168,12 +164,13 @@ public class OceanBaseTableFactoryTest {
                         RS_LIST,
                         null,
                         WORKING_MODE,
+                        new Properties(),
                         new Properties());
-        assertEquals(expectedSource, actualSource);
+        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
     @Test
-    public void testMetadataColumns() {
+    void testMetadataColumns() {
         Map<String, String> options = getRequiredOptions();
         options.put("database-name", DATABASE_NAME);
         options.put("table-name", TABLE_NAME);
@@ -190,7 +187,7 @@ public class OceanBaseTableFactoryTest {
         OceanBaseTableSource expectedSource =
                 new OceanBaseTableSource(
                         SCHEMA_WITH_METADATA,
-                        StartupMode.LATEST_OFFSET,
+                        StartupOptions.latest(),
                         USERNAME,
                         PASSWORD,
                         TENANT_NAME,
@@ -199,8 +196,8 @@ public class OceanBaseTableFactoryTest {
                         TABLE_LIST,
                         SERVER_TIME_ZONE,
                         Duration.parse("PT" + CONNECT_TIMEOUT),
-                        null,
-                        null,
+                        HOSTNAME,
+                        PORT,
                         COMPATIBLE_MODE,
                         DRIVER_CLASS,
                         new Properties(),
@@ -211,27 +208,24 @@ public class OceanBaseTableFactoryTest {
                         RS_LIST,
                         null,
                         WORKING_MODE,
+                        new Properties(),
                         new Properties());
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys =
                 Arrays.asList("op_ts", "tenant_name", "database_name", "table_name");
 
-        assertEquals(expectedSource, actualSource);
+        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
     @Test
-    public void testValidation() {
-        try {
-            Map<String, String> properties = getRequiredOptions();
-            properties.put("unknown", "abc");
-
-            createTableSource(SCHEMA, properties);
-            fail("exception expected");
-        } catch (Throwable t) {
-            assertTrue(
-                    ExceptionUtils.findThrowableWithMessage(t, "Unsupported options:\n\nunknown")
-                            .isPresent());
-        }
+    void testValidation() {
+        Assertions.assertThatThrownBy(
+                        () -> {
+                            Map<String, String> properties = getRequiredOptions();
+                            properties.put("unknown", "abc");
+                            createTableSource(SCHEMA, properties);
+                        })
+                .hasStackTraceContaining("Unsupported options:\n\nunknown");
     }
 
     private Map<String, String> getRequiredOptions() {
@@ -240,6 +234,8 @@ public class OceanBaseTableFactoryTest {
         options.put("scan.startup.mode", STARTUP_MODE);
         options.put("username", USERNAME);
         options.put("password", PASSWORD);
+        options.put("hostname", HOSTNAME);
+        options.put("port", String.valueOf(PORT));
         options.put("tenant-name", TENANT_NAME);
         options.put("logproxy.host", LOG_PROXY_HOST);
         options.put("logproxy.port", String.valueOf(LOG_PROXY_PORT));

@@ -17,11 +17,11 @@
 
 package org.apache.flink.cdc.connectors.tests;
 
+import org.apache.flink.cdc.common.test.utils.JdbcProxy;
+import org.apache.flink.cdc.common.test.utils.TestUtils;
 import org.apache.flink.cdc.connectors.tests.utils.FlinkContainerTestEnvironment;
-import org.apache.flink.cdc.connectors.tests.utils.JdbcProxy;
-import org.apache.flink.cdc.connectors.tests.utils.TestUtils;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,14 +37,16 @@ import java.util.List;
 import static org.apache.flink.cdc.connectors.base.utils.EnvironmentUtils.supportCheckpointsAfterTasksFinished;
 
 /** End-to-end tests for mysql-cdc connector uber jar. */
-public class MySqlE2eITCase extends FlinkContainerTestEnvironment {
+class MySqlE2eITCase extends FlinkContainerTestEnvironment {
 
     private static final Logger LOG = LoggerFactory.getLogger(MySqlE2eITCase.class);
 
     private static final Path mysqlCdcJar = TestUtils.getResource("mysql-cdc-connector.jar");
 
+    private static final Path mySqlConnectorJar = TestUtils.getResource("mysql-driver.jar");
+
     @Test
-    public void testMySqlCDC() throws Exception {
+    void testMySqlCDC() throws Exception {
         List<String> sqlLines =
                 Arrays.asList(
                         "SET 'execution.checkpointing.interval' = '3s';",
@@ -95,7 +97,7 @@ public class MySqlE2eITCase extends FlinkContainerTestEnvironment {
                         "INSERT INTO products_sink",
                         "SELECT * FROM products_source;");
 
-        submitSQLJob(sqlLines, mysqlCdcJar, jdbcJar);
+        submitSQLJob(sqlLines, mysqlCdcJar, jdbcJar, mySqlConnectorJar);
         waitUntilJobRunning(Duration.ofSeconds(30));
 
         // generate binlogs

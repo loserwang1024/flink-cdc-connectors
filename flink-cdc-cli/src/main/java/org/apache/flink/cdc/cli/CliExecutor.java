@@ -19,62 +19,103 @@ package org.apache.flink.cdc.cli;
 
 import org.apache.flink.cdc.cli.parser.PipelineDefinitionParser;
 import org.apache.flink.cdc.cli.parser.YamlPipelineDefinitionParser;
-import org.apache.flink.cdc.cli.utils.FlinkEnvironmentUtils;
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.composer.PipelineComposer;
+import org.apache.flink.cdc.composer.PipelineDeploymentExecutor;
 import org.apache.flink.cdc.composer.PipelineExecution;
 import org.apache.flink.cdc.composer.definition.PipelineDef;
+import org.apache.flink.cdc.composer.flink.FlinkPipelineComposer;
+import org.apache.flink.cdc.composer.flink.deployment.ComposeDeployment;
+import org.apache.flink.cdc.composer.flink.deployment.K8SApplicationDeploymentExecutor;
+import org.apache.flink.cdc.composer.flink.deployment.YarnApplicationDeploymentExecutor;
+import org.apache.flink.configuration.DeploymentOptions;
+import org.apache.flink.core.fs.Path;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
-import java.nio.file.Path;
+import org.apache.commons.cli.CommandLine;
+
 import java.util.List;
+
+import static org.apache.flink.cdc.composer.flink.deployment.ComposeDeployment.REMOTE;
 
 /** Executor for doing the composing and submitting logic for {@link CliFrontend}. */
 public class CliExecutor {
 
     private final Path pipelineDefPath;
-    private final Configuration flinkConfig;
+    private final org.apache.flink.configuration.Configuration flinkConfig;
     private final Configuration globalPipelineConfig;
-    private final boolean useMiniCluster;
     private final List<Path> additionalJars;
-
+    private final Path flinkHome;
+    private final CommandLine commandLine;
     private PipelineComposer composer = null;
 
     public CliExecutor(
+            CommandLine commandLine,
             Path pipelineDefPath,
-            Configuration flinkConfig,
+            org.apache.flink.configuration.Configuration flinkConfig,
             Configuration globalPipelineConfig,
-            boolean useMiniCluster,
-            List<Path> additionalJars) {
+            List<Path> additionalJars,
+            Path flinkHome) {
+        this.commandLine = commandLine;
         this.pipelineDefPath = pipelineDefPath;
         this.flinkConfig = flinkConfig;
         this.globalPipelineConfig = globalPipelineConfig;
-        this.useMiniCluster = useMiniCluster;
         this.additionalJars = additionalJars;
+        this.flinkHome = flinkHome;
     }
 
     public PipelineExecution.ExecutionInfo run() throws Exception {
-        // Parse pipeline definition file
+        // Create Submit Executor to deployment flink cdc job Or Run Flink CDC Job
+        String deploymentTargetStr = getDeploymentTarget();
+        ComposeDeployment deploymentTarget =
+                ComposeDeployment.getDeploymentFromName(deploymentTargetStr);
+        switch (deploymentTarget) {
+            case KUBERNETES_APPLICATION:
+                return deployWithApplicationComposer(new K8SApplicationDeploymentExecutor());
+            case YARN_APPLICATION:
+                return deployWithApplicationComposer(new YarnApplicationDeploymentExecutor());
+            case LOCAL:
+                return deployWithComposer(FlinkPipelineComposer.ofMiniCluster());
+            case REMOTE:
+            case YARN_SESSION:
+                return deployWithComposer(
+                        FlinkPipelineComposer.ofRemoteCluster(flinkConfig, additionalJars));
+            default:
+                throw new IllegalArgumentException(
+                        String.format(
+                                "Deployment target %s is not supported", deploymentTargetStr));
+        }
+    }
+
+    private PipelineExecution.ExecutionInfo deployWithApplicationComposer(
+            PipelineDeploymentExecutor composeExecutor) throws Exception {
+        return composeExecutor.deploy(commandLine, flinkConfig, additionalJars, flinkHome);
+    }
+
+    private PipelineExecution.ExecutionInfo deployWithComposer(PipelineComposer composer)
+            throws Exception {
         PipelineDefinitionParser pipelineDefinitionParser = new YamlPipelineDefinitionParser();
         PipelineDef pipelineDef =
                 pipelineDefinitionParser.parse(pipelineDefPath, globalPipelineConfig);
-
-        // Create composer
-        PipelineComposer composer = getComposer(flinkConfig);
-
-        // Compose pipeline
         PipelineExecution execution = composer.compose(pipelineDef);
-
-        // Execute the pipeline
         return execution.execute();
     }
 
-    private PipelineComposer getComposer(Configuration flinkConfig) {
-        if (composer == null) {
-            return FlinkEnvironmentUtils.createComposer(
-                    useMiniCluster, flinkConfig, additionalJars);
-        }
-        return composer;
+    @VisibleForTesting
+    public PipelineExecution.ExecutionInfo deployWithNoOpComposer() throws Exception {
+        return deployWithComposer(this.composer);
+    }
+
+    // The main class for running application mode
+    public static void main(String[] args) throws Exception {
+        PipelineDefinitionParser pipelineDefinitionParser = new YamlPipelineDefinitionParser();
+        PipelineDef pipelineDef = pipelineDefinitionParser.parse(args[0], new Configuration());
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        FlinkPipelineComposer flinkPipelineComposer =
+                FlinkPipelineComposer.ofApplicationCluster(env);
+        PipelineExecution execution = flinkPipelineComposer.compose(pipelineDef);
+        execution.execute();
     }
 
     @VisibleForTesting
@@ -83,7 +124,7 @@ public class CliExecutor {
     }
 
     @VisibleForTesting
-    public Configuration getFlinkConfig() {
+    public org.apache.flink.configuration.Configuration getFlinkConfig() {
         return flinkConfig;
     }
 
@@ -95,5 +136,9 @@ public class CliExecutor {
     @VisibleForTesting
     public List<Path> getAdditionalJars() {
         return additionalJars;
+    }
+
+    public String getDeploymentTarget() {
+        return flinkConfig.get(DeploymentOptions.TARGET);
     }
 }

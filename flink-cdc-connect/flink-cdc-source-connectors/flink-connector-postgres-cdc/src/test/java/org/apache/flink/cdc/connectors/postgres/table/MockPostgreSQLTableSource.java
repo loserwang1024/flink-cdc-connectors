@@ -64,7 +64,9 @@ public class MockPostgreSQLTableSource extends PostgreSQLTableSource {
                 (String) get(postgreSQLTableSource, "chunkKeyColumn"),
                 (boolean) get(postgreSQLTableSource, "closeIdleReaders"),
                 (boolean) get(postgreSQLTableSource, "skipSnapshotBackfill"),
-                (boolean) get(postgreSQLTableSource, "scanNewlyAddedTableEnabled"));
+                (boolean) get(postgreSQLTableSource, "scanNewlyAddedTableEnabled"),
+                (int) get(postgreSQLTableSource, "lsnCommitCheckpointsDelay"),
+                (boolean) get(postgreSQLTableSource, "assignUnboundedChunkFirst"));
     }
 
     @Override

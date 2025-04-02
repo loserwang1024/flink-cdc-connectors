@@ -82,10 +82,10 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
     private final StartupOptions startupOptions;
     private final String chunkKeyColumn;
     private final boolean closeIdleReaders;
-
     private final boolean skipSnapshotBackfill;
-
     private final boolean scanNewlyAddedTableEnabled;
+    private final int lsnCommitCheckpointsDelay;
+    private final boolean assignUnboundedChunkFirst;
 
     // --------------------------------------------------------------------------------------------
     // Mutable attributes
@@ -124,7 +124,9 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
             @Nullable String chunkKeyColumn,
             boolean closeIdleReaders,
             boolean skipSnapshotBackfill,
-            boolean isScanNewlyAddedTableEnabled) {
+            boolean isScanNewlyAddedTableEnabled,
+            int lsnCommitCheckpointsDelay,
+            boolean assignUnboundedChunkFirst) {
         this.physicalSchema = physicalSchema;
         this.port = port;
         this.hostname = checkNotNull(hostname);
@@ -155,6 +157,8 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
         this.closeIdleReaders = closeIdleReaders;
         this.skipSnapshotBackfill = skipSnapshotBackfill;
         this.scanNewlyAddedTableEnabled = isScanNewlyAddedTableEnabled;
+        this.lsnCommitCheckpointsDelay = lsnCommitCheckpointsDelay;
+        this.assignUnboundedChunkFirst = assignUnboundedChunkFirst;
     }
 
     @Override
@@ -216,6 +220,8 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                             .closeIdleReaders(closeIdleReaders)
                             .skipSnapshotBackfill(skipSnapshotBackfill)
                             .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
+                            .lsnCommitCheckpointsDelay(lsnCommitCheckpointsDelay)
+                            .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
                             .build();
             return SourceProvider.of(parallelSource);
         } else {
@@ -283,7 +289,9 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                         chunkKeyColumn,
                         closeIdleReaders,
                         skipSnapshotBackfill,
-                        scanNewlyAddedTableEnabled);
+                        scanNewlyAddedTableEnabled,
+                        lsnCommitCheckpointsDelay,
+                        assignUnboundedChunkFirst);
         source.metadataKeys = metadataKeys;
         source.producedDataType = producedDataType;
         return source;
@@ -326,7 +334,8 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                 && Objects.equals(chunkKeyColumn, that.chunkKeyColumn)
                 && Objects.equals(closeIdleReaders, that.closeIdleReaders)
                 && Objects.equals(skipSnapshotBackfill, that.skipSnapshotBackfill)
-                && Objects.equals(scanNewlyAddedTableEnabled, that.scanNewlyAddedTableEnabled);
+                && Objects.equals(scanNewlyAddedTableEnabled, that.scanNewlyAddedTableEnabled)
+                && Objects.equals(assignUnboundedChunkFirst, that.assignUnboundedChunkFirst);
     }
 
     @Override
@@ -360,7 +369,8 @@ public class PostgreSQLTableSource implements ScanTableSource, SupportsReadingMe
                 chunkKeyColumn,
                 closeIdleReaders,
                 skipSnapshotBackfill,
-                scanNewlyAddedTableEnabled);
+                scanNewlyAddedTableEnabled,
+                assignUnboundedChunkFirst);
     }
 
     @Override

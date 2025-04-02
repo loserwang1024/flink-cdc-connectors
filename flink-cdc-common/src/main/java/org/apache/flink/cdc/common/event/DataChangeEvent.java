@@ -24,6 +24,7 @@ import java.io.Serializable;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * Class {@code DataChangeEvent} represents the data change events of external systems, such as
@@ -139,6 +140,44 @@ public class DataChangeEvent implements ChangeEvent, Serializable {
         return new DataChangeEvent(tableId, null, after, OperationType.REPLACE, meta);
     }
 
+    /**
+     * Updates the before of a {@link DataChangeEvent} instance that describes the event with meta
+     * info.
+     */
+    public static DataChangeEvent projectBefore(
+            DataChangeEvent dataChangeEvent, RecordData projectedBefore) {
+        return new DataChangeEvent(
+                dataChangeEvent.tableId,
+                projectedBefore,
+                dataChangeEvent.after,
+                dataChangeEvent.op,
+                dataChangeEvent.meta);
+    }
+
+    /**
+     * Updates the after of a {@link DataChangeEvent} instance that describes the event with meta
+     * info.
+     */
+    public static DataChangeEvent projectAfter(
+            DataChangeEvent dataChangeEvent, RecordData projectedAfter) {
+        return new DataChangeEvent(
+                dataChangeEvent.tableId,
+                dataChangeEvent.before,
+                projectedAfter,
+                dataChangeEvent.op,
+                dataChangeEvent.meta);
+    }
+
+    /** Updates the {@link TableId} info of current data change event. */
+    public static DataChangeEvent route(DataChangeEvent dataChangeEvent, TableId tableId) {
+        return new DataChangeEvent(
+                tableId,
+                dataChangeEvent.before,
+                dataChangeEvent.after,
+                dataChangeEvent.op,
+                dataChangeEvent.meta);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -168,6 +207,21 @@ public class DataChangeEvent implements ChangeEvent, Serializable {
         }
         stringBuilder.append(")");
         return stringBuilder.toString();
+    }
+
+    public String toReadableString(Function<RecordData, ?> extractor) {
+        return "DataChangeEvent{"
+                + "tableId="
+                + tableId
+                + ", before="
+                + extractor.apply(before)
+                + ", after="
+                + extractor.apply(after)
+                + ", op="
+                + op
+                + ", meta="
+                + describeMeta()
+                + '}';
     }
 
     @Override

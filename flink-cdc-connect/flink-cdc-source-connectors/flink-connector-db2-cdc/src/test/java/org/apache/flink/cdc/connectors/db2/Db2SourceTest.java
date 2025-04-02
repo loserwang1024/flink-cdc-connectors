@@ -38,7 +38,8 @@ import org.apache.flink.util.Preconditions;
 
 import com.jayway.jsonpath.JsonPath;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.junit.Test;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nullable;
 
@@ -60,17 +61,15 @@ import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertDelete;
 import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertInsert;
 import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertRead;
 import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertUpdate;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static org.testcontainers.containers.Db2Container.DB2_PORT;
 
 /** Test for {@link Db2Source} which also heavily tests {@link DebeziumSourceFunction}. */
-public class Db2SourceTest extends Db2TestBase {
+class Db2SourceTest extends Db2TestBase {
 
     @Test
-    public void testConsumingAllEvents() throws Exception {
-        DebeziumSourceFunction<SourceRecord> source = createDb2Source("DB2INST1.PRODUCTS1");
+    void testConsumingAllEvents() throws Exception {
+        initializeDb2Table("inventory", "PRODUCTS");
+        DebeziumSourceFunction<SourceRecord> source = createDb2Source("DB2INST1.PRODUCTS");
         TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
 
         setupSource(source);
@@ -88,18 +87,18 @@ public class Db2SourceTest extends Db2TestBase {
             runThread.start();
 
             List<SourceRecord> records = drain(sourceContext, 9);
-            assertEquals(9, records.size());
+            Assertions.assertThat(records).hasSize(9);
             for (int i = 0; i < records.size(); i++) {
                 assertRead(records.get(i), "ID", 101 + i);
             }
 
             statement.execute(
-                    "INSERT INTO DB2INST1.PRODUCTS1 VALUES (default,'robot','Toy robot',1.304)"); // 110
+                    "INSERT INTO DB2INST1.PRODUCTS VALUES (default,'robot','Toy robot',1.304)"); // 110
             records = drain(sourceContext, 1);
             assertInsert(records.get(0), "ID", 110);
 
             statement.execute(
-                    "INSERT INTO DB2INST1.PRODUCTS1 VALUES (1001,'roy','old robot',1234.56)"); // 1001
+                    "INSERT INTO DB2INST1.PRODUCTS VALUES (1001,'roy','old robot',1234.56)"); // 1001
             records = drain(sourceContext, 1);
             assertInsert(records.get(0), "ID", 1001);
 
@@ -108,7 +107,7 @@ public class Db2SourceTest extends Db2TestBase {
             // (TOMBSTONE is dropped)
             // ---------------------------------------------------------------------------------------------------------------
             statement.execute(
-                    "UPDATE DB2INST1.PRODUCTS1 SET ID=2001, DESCRIPTION='really old robot' WHERE ID=1001");
+                    "UPDATE DB2INST1.PRODUCTS SET ID=2001, DESCRIPTION='really old robot' WHERE ID=1001");
             records = drain(sourceContext, 2);
             assertDelete(records.get(0), "ID", 1001);
             assertInsert(records.get(1), "ID", 2001);
@@ -116,7 +115,7 @@ public class Db2SourceTest extends Db2TestBase {
             // ---------------------------------------------------------------------------------------------------------------
             // Simple UPDATE (with no schema changes)
             // ---------------------------------------------------------------------------------------------------------------
-            statement.execute("UPDATE DB2INST1.PRODUCTS1 SET WEIGHT=1345.67 WHERE ID=2001");
+            statement.execute("UPDATE DB2INST1.PRODUCTS SET WEIGHT=1345.67 WHERE ID=2001");
             records = drain(sourceContext, 1);
             assertUpdate(records.get(0), "ID", 2001);
 
@@ -126,8 +125,8 @@ public class Db2SourceTest extends Db2TestBase {
             // Add a column with default to the 'products' table and explicitly update one record
             // ...
             statement.execute(
-                    "ALTER TABLE DB2INST1.PRODUCTS1 ADD COLUMN VOLUME FLOAT ADD COLUMN ALIAS VARCHAR(30) NULL");
-            statement.execute("UPDATE DB2INST1.PRODUCTS1 SET VOLUME=13.5 WHERE ID=2001");
+                    "ALTER TABLE DB2INST1.PRODUCTS ADD COLUMN VOLUME FLOAT ADD COLUMN ALIAS VARCHAR(30) NULL");
+            statement.execute("UPDATE DB2INST1.PRODUCTS SET VOLUME=13.5 WHERE ID=2001");
             records = drain(sourceContext, 1);
             assertUpdate(records.get(0), "ID", 2001);
 
@@ -138,7 +137,8 @@ public class Db2SourceTest extends Db2TestBase {
     }
 
     @Test
-    public void testCheckpointAndRestore() throws Exception {
+    void testCheckpointAndRestore() throws Exception {
+        initializeDb2Table("inventory", "PRODUCTS");
         final TestingListState<byte[]> offsetState = new TestingListState<>();
         final TestingListState<String> historyState = new TestingListState<>();
         String prevLsn = "";
@@ -147,7 +147,7 @@ public class Db2SourceTest extends Db2TestBase {
             // Step-1: start the source from empty state
             // ---------------------------------------------------------------------------
             final DebeziumSourceFunction<SourceRecord> source =
-                    createDb2Source("DB2INST1.PRODUCTS2");
+                    createDb2Source("DB2INST1.PRODUCTS");
             // we use blocking context to block the source to emit before last snapshot record
             final BlockingSourceContext<SourceRecord> sourceContext =
                     new BlockingSourceContext<>(8);
@@ -165,22 +165,23 @@ public class Db2SourceTest extends Db2TestBase {
 
             // wait until consumer is started
             int received = drain(sourceContext, 2).size();
-            assertEquals(2, received);
+            Assertions.assertThat(received).isEqualTo(2);
 
             // we can't perform checkpoint during DB snapshot
-            assertFalse(
-                    waitForCheckpointLock(
-                            sourceContext.getCheckpointLock(), Duration.ofSeconds(3)));
+            Assertions.assertThat(
+                            waitForCheckpointLock(
+                                    sourceContext.getCheckpointLock(), Duration.ofSeconds(3)))
+                    .isFalse();
 
             // unblock the source context to continue the processing
             sourceContext.blocker.release();
             // wait until the source finishes the database snapshot
             List<SourceRecord> records = drain(sourceContext, 9 - received);
-            assertEquals(9, records.size() + received);
+            Assertions.assertThat(records.size() + received).isEqualTo(9);
 
             // state is still empty
-            assertEquals(0, offsetState.list.size());
-            assertEquals(0, historyState.list.size());
+            Assertions.assertThat(offsetState.list).isEmpty();
+            Assertions.assertThat(historyState.list).isEmpty();
 
             // ---------------------------------------------------------------------------
             // Step-2: trigger checkpoint-1 after snapshot finished
@@ -190,12 +191,13 @@ public class Db2SourceTest extends Db2TestBase {
                 source.snapshotState(new StateSnapshotContextSynchronousImpl(101, 101));
             }
 
-            assertEquals(1, offsetState.list.size());
+            Assertions.assertThat(offsetState.list).hasSize(1);
             String state = new String(offsetState.list.get(0), StandardCharsets.UTF_8);
-            assertEquals("db2_cdc_source", JsonPath.read(state, "$.sourcePartition.server"));
+            Assertions.assertThat(JsonPath.<String>read(state, "$.sourcePartition.server"))
+                    .isEqualTo("db2_cdc_source");
 
             String lsn = JsonPath.read(state, "$.sourceOffset.commit_lsn");
-            assertTrue(lsn.compareTo(prevLsn) > 0);
+            Assertions.assertThat(lsn).isGreaterThan(prevLsn);
             prevLsn = lsn;
 
             source.close();
@@ -207,7 +209,7 @@ public class Db2SourceTest extends Db2TestBase {
             // Step-3: restore the source from state
             // ---------------------------------------------------------------------------
             final DebeziumSourceFunction<SourceRecord> source2 =
-                    createDb2Source("DB2INST1.PRODUCTS2");
+                    createDb2Source("DB2INST1.PRODUCTS");
             final TestSourceContext<SourceRecord> sourceContext2 = new TestSourceContext<>();
             setupSource(source2, 1L, offsetState, historyState, true, 0, 1);
             final CheckedThread runThread2 =
@@ -220,15 +222,16 @@ public class Db2SourceTest extends Db2TestBase {
             runThread2.start();
 
             // make sure there is no more events
-            assertFalse(waitForAvailableRecords(Duration.ofSeconds(5), sourceContext2));
+            Assertions.assertThat(waitForAvailableRecords(Duration.ofSeconds(5), sourceContext2))
+                    .isFalse();
 
             try (Connection connection = getJdbcConnection();
                     Statement statement = connection.createStatement()) {
 
                 statement.execute(
-                        "INSERT INTO DB2INST1.PRODUCTS2 VALUES (default,'robot','Toy robot',1.304)"); // 110
+                        "INSERT INTO DB2INST1.PRODUCTS VALUES (default,'robot','Toy robot',1.304)"); // 110
                 List<SourceRecord> records = drain(sourceContext2, 1);
-                assertEquals(1, records.size());
+                Assertions.assertThat(records).hasSize(1);
                 assertInsert(records.get(0), "ID", 110);
 
                 // ---------------------------------------------------------------------------
@@ -239,16 +242,17 @@ public class Db2SourceTest extends Db2TestBase {
                     source2.snapshotState(new StateSnapshotContextSynchronousImpl(138, 138));
                 }
 
-                assertEquals(1, offsetState.list.size());
+                Assertions.assertThat(offsetState.list).hasSize(1);
                 String state = new String(offsetState.list.get(0), StandardCharsets.UTF_8);
-                assertEquals("db2_cdc_source", JsonPath.read(state, "$.sourcePartition.server"));
+                Assertions.assertThat(JsonPath.<String>read(state, "$.sourcePartition.server"))
+                        .isEqualTo("db2_cdc_source");
                 String lsn = JsonPath.read(state, "$.sourceOffset.commit_lsn");
-                assertTrue(lsn.compareTo(prevLsn) > 0);
+                Assertions.assertThat(lsn).isGreaterThan(prevLsn);
 
-                // execute 2 more DMLs to have more binlog
+                // execute 2 more DMLs to have more redo logs
                 statement.execute(
-                        "INSERT INTO DB2INST1.PRODUCTS2 VALUES (1001,'roy','old robot',1234.56)"); // 1001
-                statement.execute("UPDATE DB2INST1.PRODUCTS2 SET WEIGHT=1345.67 WHERE ID=1001");
+                        "INSERT INTO DB2INST1.PRODUCTS VALUES (1001,'roy','old robot',1234.56)"); // 1001
+                statement.execute("UPDATE DB2INST1.PRODUCTS SET WEIGHT=1345.67 WHERE ID=1001");
             }
 
             // cancel the source
@@ -261,7 +265,7 @@ public class Db2SourceTest extends Db2TestBase {
             // Step-5: restore the source from checkpoint-2
             // ---------------------------------------------------------------------------
             final DebeziumSourceFunction<SourceRecord> source3 =
-                    createDb2Source("DB2INST1.PRODUCTS2");
+                    createDb2Source("DB2INST1.PRODUCTS");
             final TestSourceContext<SourceRecord> sourceContext3 = new TestSourceContext<>();
             setupSource(source3, 2L, offsetState, historyState, true, 0, 1);
 
@@ -275,18 +279,19 @@ public class Db2SourceTest extends Db2TestBase {
                     };
             runThread3.start();
 
-            // consume the unconsumed binlog
+            // consume the unconsumed redo logs
             List<SourceRecord> records = drain(sourceContext3, 2);
             assertInsert(records.get(0), "ID", 1001);
             assertUpdate(records.get(1), "ID", 1001);
 
             // make sure there is no more events
-            assertFalse(waitForAvailableRecords(Duration.ofSeconds(3), sourceContext3));
+            Assertions.assertThat(waitForAvailableRecords(Duration.ofSeconds(3), sourceContext3))
+                    .isFalse();
 
             // can continue to receive new events
             try (Connection connection = getJdbcConnection();
                     Statement statement = connection.createStatement()) {
-                statement.execute("DELETE FROM DB2INST1.PRODUCTS2 WHERE ID=1001");
+                statement.execute("DELETE FROM DB2INST1.PRODUCTS WHERE ID=1001");
             }
             records = drain(sourceContext3, 1);
             assertDelete(records.get(0), "ID", 1001);
@@ -298,11 +303,12 @@ public class Db2SourceTest extends Db2TestBase {
                 // checkpoint 3
                 source3.snapshotState(new StateSnapshotContextSynchronousImpl(233, 233));
             }
-            assertEquals(1, offsetState.list.size());
+            Assertions.assertThat(offsetState.list).hasSize(1);
             String state = new String(offsetState.list.get(0), StandardCharsets.UTF_8);
-            assertEquals("db2_cdc_source", JsonPath.read(state, "$.sourcePartition.server"));
+            Assertions.assertThat(JsonPath.<String>read(state, "$.sourcePartition.server"))
+                    .isEqualTo("db2_cdc_source");
             String lsn = JsonPath.read(state, "$.sourceOffset.commit_lsn");
-            assertTrue(lsn.compareTo(prevLsn) > 0);
+            Assertions.assertThat(lsn).isGreaterThan(prevLsn);
 
             source3.close();
             runThread3.sync();

@@ -21,24 +21,23 @@ import org.apache.flink.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.flink.cdc.connectors.mongodb.LegacyMongoDBContainer.FLINK_USER;
 import static org.apache.flink.cdc.connectors.mongodb.LegacyMongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.cdc.connectors.mongodb.LegacyMongoDBTestBase.MONGODB_CONTAINER;
 
 /** Example Tests for {@link MongoDBSource}. */
-public class LegacyMongoDBSourceExampleTest extends LegacyMongoDBSourceTestBase {
+class LegacyMongoDBSourceExampleTest extends LegacyMongoDBSourceTestBase {
 
     @Test
-    @Ignore("Test ignored because it won't stop and is used for manual test")
-    public void testConsumingAllEvents() throws Exception {
-        String inventory = SHARD.executeCommandFileInSeparateDatabase("inventory");
+    @Disabled("Test ignored because it won't stop and is used for manual test")
+    void testConsumingAllEvents() throws Exception {
+        String inventory = ROUTER.executeCommandFileInSeparateDatabase("inventory");
 
         SourceFunction<String> sourceFunction =
                 MongoDBSource.<String>builder()
-                        .hosts(MONGODB_CONTAINER.getHostAndPort())
+                        .hosts(ROUTER.getHostAndPort())
                         .username(FLINK_USER)
                         .password(FLINK_USER_PASSWORD)
                         .databaseList(inventory)

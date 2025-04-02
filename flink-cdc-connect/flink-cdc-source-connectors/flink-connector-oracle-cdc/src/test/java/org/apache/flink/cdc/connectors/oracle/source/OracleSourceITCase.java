@@ -25,9 +25,9 @@ import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.cdc.connectors.oracle.source.utils.OracleConnectionUtils;
+import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.FailoverPhase;
+import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.FailoverType;
 import org.apache.flink.cdc.connectors.oracle.testutils.TestTable;
-import org.apache.flink.runtime.highavailability.nonha.embedded.HaLeadershipControl;
-import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -36,14 +36,13 @@ import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
-import org.apache.flink.util.ExceptionUtils;
 
 import io.debezium.connector.oracle.OracleConnection;
 import io.debezium.jdbc.JdbcConfiguration;
 import org.apache.commons.lang3.StringUtils;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.Timeout;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,17 +53,19 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
+import static org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.triggerFailover;
 import static org.apache.flink.table.api.DataTypes.BIGINT;
 import static org.apache.flink.table.api.DataTypes.STRING;
 import static org.apache.flink.table.catalog.Column.physical;
 import static org.apache.flink.util.Preconditions.checkState;
-import static org.junit.Assert.assertTrue;
 
 /** IT tests for {@link OracleSourceBuilder.OracleIncrementalSource}. */
+@Timeout(value = 300, unit = TimeUnit.SECONDS)
 public class OracleSourceITCase extends OracleSourceTestBase {
     private static final int USE_POST_LOWWATERMARK_HOOK = 1;
     private static final int USE_PRE_HIGHWATERMARK_HOOK = 2;
@@ -72,59 +73,57 @@ public class OracleSourceITCase extends OracleSourceTestBase {
 
     private static final Logger LOG = LoggerFactory.getLogger(OracleSourceITCase.class);
 
-    @Rule public final Timeout timeoutPerTest = Timeout.seconds(300);
-
     @Test
-    public void testReadSingleTableWithSingleParallelism() throws Exception {
+    void testReadSingleTableWithSingleParallelism() throws Exception {
         testOracleParallelSource(
                 1, FailoverType.NONE, FailoverPhase.NEVER, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testReadSingleTableWithMultipleParallelism() throws Exception {
+    void testReadSingleTableWithMultipleParallelism() throws Exception {
         testOracleParallelSource(
                 4, FailoverType.NONE, FailoverPhase.NEVER, new String[] {"CUSTOMERS"});
     }
 
     // Failover tests
     @Test
-    public void testTaskManagerFailoverInSnapshotPhase() throws Exception {
+    void testTaskManagerFailoverInSnapshotPhase() throws Exception {
         testOracleParallelSource(
                 FailoverType.TM, FailoverPhase.SNAPSHOT, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testTaskManagerFailoverInRedoLogPhase() throws Exception {
+    void testTaskManagerFailoverInRedoLogPhase() throws Exception {
         testOracleParallelSource(
                 FailoverType.TM, FailoverPhase.REDO_LOG, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testJobManagerFailoverInSnapshotPhase() throws Exception {
+    void testJobManagerFailoverInSnapshotPhase() throws Exception {
         testOracleParallelSource(
                 FailoverType.JM, FailoverPhase.SNAPSHOT, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testJobManagerFailoverInRedoLogPhase() throws Exception {
+    void testJobManagerFailoverInRedoLogPhase() throws Exception {
         testOracleParallelSource(
                 FailoverType.JM, FailoverPhase.REDO_LOG, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testTaskManagerFailoverSingleParallelism() throws Exception {
+    void testTaskManagerFailoverSingleParallelism() throws Exception {
         testOracleParallelSource(
                 1, FailoverType.TM, FailoverPhase.SNAPSHOT, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testJobManagerFailoverSingleParallelism() throws Exception {
+    void testJobManagerFailoverSingleParallelism() throws Exception {
         testOracleParallelSource(
                 1, FailoverType.JM, FailoverPhase.SNAPSHOT, new String[] {"CUSTOMERS"});
     }
 
     @Test
-    public void testReadSingleTableWithSingleParallelismAndSkipBackfill() throws Exception {
+    void testReadSingleTableWithSingleParallelismAndSkipBackfill() throws Exception {
         testOracleParallelSource(
                 DEFAULT_PARALLELISM,
                 FailoverType.TM,
@@ -136,7 +135,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testSnapshotOnlyModeWithDMLPostHighWaterMark() throws Exception {
+    void testSnapshotOnlyModeWithDMLPostHighWaterMark() throws Exception {
         // The data num is 21, set fetchSize = 22 to test the job is bounded.
         List<String> records =
                 testBackfillWhenWritingEvents(
@@ -168,7 +167,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testSnapshotOnlyModeWithDMLPreHighWaterMark() throws Exception {
+    void testSnapshotOnlyModeWithDMLPreHighWaterMark() throws Exception {
         // The data num is 21, set fetchSize = 22 to test the job is bounded.
         List<String> records =
                 testBackfillWhenWritingEvents(
@@ -202,7 +201,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testEnableBackfillWithDMLPreHighWaterMark() throws Exception {
+    void testEnableBackfillWithDMLPreHighWaterMark() throws Exception {
 
         List<String> records =
                 testBackfillWhenWritingEvents(
@@ -237,7 +236,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testEnableBackfillWithDMLPostLowWaterMark() throws Exception {
+    void testEnableBackfillWithDMLPostLowWaterMark() throws Exception {
         List<String> records =
                 testBackfillWhenWritingEvents(
                         false, 21, USE_POST_LOWWATERMARK_HOOK, StartupOptions.initial());
@@ -271,7 +270,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testEnableBackfillWithDMLPostHighWaterMark() throws Exception {
+    void testEnableBackfillWithDMLPostHighWaterMark() throws Exception {
         List<String> records =
                 testBackfillWhenWritingEvents(
                         false, 21, USE_POST_HIGHWATERMARK_HOOK, StartupOptions.initial());
@@ -305,7 +304,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testSkipBackfillWithDMLPreHighWaterMark() throws Exception {
+    void testSkipBackfillWithDMLPreHighWaterMark() throws Exception {
         List<String> records =
                 testBackfillWhenWritingEvents(
                         true, 25, USE_PRE_HIGHWATERMARK_HOOK, StartupOptions.initial());
@@ -343,7 +342,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testSkipBackfillWithDMLPostLowWaterMark() throws Exception {
+    void testSkipBackfillWithDMLPostLowWaterMark() throws Exception {
 
         List<String> records =
                 testBackfillWhenWritingEvents(
@@ -383,7 +382,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     @Test
-    public void testTableWithChunkColumnOfNoPrimaryKey() {
+    void testTableWithChunkColumnOfNoPrimaryKey() {
         String chunkColumn = "NAME";
         try {
             testOracleParallelSource(
@@ -395,13 +394,11 @@ public class OracleSourceITCase extends OracleSourceTestBase {
                     RestartStrategies.noRestart(),
                     chunkColumn);
         } catch (Exception e) {
-            assertTrue(
-                    ExceptionUtils.findThrowableWithMessage(
-                                    e,
-                                    String.format(
-                                            "Chunk key column '%s' doesn't exist in the primary key [%s] of the table %s.",
-                                            chunkColumn, "ID", "customer.DEBEZIUM.CUSTOMERS"))
-                            .isPresent());
+            Assertions.assertThat(e)
+                    .hasStackTraceContaining(
+                            String.format(
+                                    "Chunk key column '%s' doesn't exist in the primary key [%s] of the table %s.",
+                                    chunkColumn, "id", "customer.dbo.customers"));
         }
     }
 
@@ -433,8 +430,10 @@ public class OracleSourceITCase extends OracleSourceTestBase {
                 OracleSourceBuilder.OracleIncrementalSource.<RowData>builder()
                         .hostname(ORACLE_CONTAINER.getHost())
                         .port(ORACLE_CONTAINER.getOraclePort())
-                        .username(CONNECTOR_USER)
-                        .password(CONNECTOR_PWD)
+                        // To analyze table for approximate rowCnt computation, use admin user
+                        // before chunk splitting.
+                        .username(TOP_USER)
+                        .password(TOP_SECRET)
                         .databaseList(ORACLE_DATABASE)
                         .schemaList(ORACLE_SCHEMA)
                         .tableList("DEBEZIUM.CUSTOMERS")
@@ -558,8 +557,10 @@ public class OracleSourceITCase extends OracleSourceTestBase {
                                 + ")",
                         ORACLE_CONTAINER.getHost(),
                         ORACLE_CONTAINER.getOraclePort(),
-                        ORACLE_CONTAINER.getUsername(),
-                        ORACLE_CONTAINER.getPassword(),
+                        // To analyze table for approximate rowCnt computation, use admin user
+                        // before chunk splitting.
+                        TOP_USER,
+                        TOP_SECRET,
                         ORACLE_DATABASE,
                         ORACLE_SCHEMA,
                         getTableNameRegex(captureCustomerTables), // (customer|customer_1)
@@ -607,7 +608,10 @@ public class OracleSourceITCase extends OracleSourceTestBase {
         // trigger failover after some snapshot splits read finished
         if (failoverPhase == FailoverPhase.SNAPSHOT && iterator.hasNext()) {
             triggerFailover(
-                    failoverType, jobId, miniClusterResource.getMiniCluster(), () -> sleepMs(100));
+                    failoverType,
+                    jobId,
+                    miniClusterResource.get().getMiniCluster(),
+                    () -> sleepMs(100));
         }
 
         LOG.info("snapshot data start");
@@ -620,7 +624,10 @@ public class OracleSourceITCase extends OracleSourceTestBase {
         }
         if (failoverPhase == FailoverPhase.REDO_LOG) {
             triggerFailover(
-                    failoverType, jobId, miniClusterResource.getMiniCluster(), () -> sleepMs(200));
+                    failoverType,
+                    jobId,
+                    miniClusterResource.get().getMiniCluster(),
+                    () -> sleepMs(200));
         }
         for (String tableId : captureCustomerTables) {
             makeSecondPartRedoLogEvents(ORACLE_SCHEMA + '.' + tableId);
@@ -706,55 +713,5 @@ public class OracleSourceITCase extends OracleSourceTestBase {
                 Statement statement = connection.createStatement()) {
             statement.execute(sql);
         }
-    }
-
-    // ------------------------------------------------------------------------
-    //  test utilities
-    // ------------------------------------------------------------------------
-
-    /** The type of failover. */
-    private enum FailoverType {
-        TM,
-        JM,
-        NONE
-    }
-
-    /** The phase of failover. */
-    private enum FailoverPhase {
-        SNAPSHOT,
-        REDO_LOG,
-        NEVER
-    }
-
-    private static void triggerFailover(
-            FailoverType type, JobID jobId, MiniCluster miniCluster, Runnable afterFailAction)
-            throws Exception {
-        switch (type) {
-            case TM:
-                restartTaskManager(miniCluster, afterFailAction);
-                break;
-            case JM:
-                triggerJobManagerFailover(jobId, miniCluster, afterFailAction);
-                break;
-            case NONE:
-                break;
-            default:
-                throw new IllegalStateException("Unexpected value: " + type);
-        }
-    }
-
-    private static void triggerJobManagerFailover(
-            JobID jobId, MiniCluster miniCluster, Runnable afterFailAction) throws Exception {
-        final HaLeadershipControl haLeadershipControl = miniCluster.getHaLeadershipControl().get();
-        haLeadershipControl.revokeJobMasterLeadership(jobId).get();
-        afterFailAction.run();
-        haLeadershipControl.grantJobMasterLeadership(jobId).get();
-    }
-
-    private static void restartTaskManager(MiniCluster miniCluster, Runnable afterFailAction)
-            throws Exception {
-        miniCluster.terminateTaskManager(0).get();
-        afterFailAction.run();
-        miniCluster.startTaskManager();
     }
 }

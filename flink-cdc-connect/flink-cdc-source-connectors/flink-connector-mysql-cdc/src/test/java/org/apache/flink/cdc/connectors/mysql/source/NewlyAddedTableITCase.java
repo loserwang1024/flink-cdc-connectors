@@ -50,14 +50,13 @@ import org.apache.flink.util.ExceptionUtils;
 import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.jdbc.JdbcConnection;
 import org.apache.commons.lang3.StringUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import org.junit.rules.Timeout;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -79,19 +78,21 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.lang.String.format;
+import static org.apache.flink.api.common.restartstrategy.RestartStrategies.noRestart;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /** IT tests to cover various newly added tables during capture process. */
-public class NewlyAddedTableITCase extends MySqlSourceTestBase {
-
-    @Rule public final Timeout timeoutPerTest = Timeout.seconds(300);
+@Timeout(value = 300, unit = TimeUnit.SECONDS)
+class NewlyAddedTableITCase extends MySqlSourceTestBase {
 
     private final UniqueDatabase customDatabase =
             new UniqueDatabase(MYSQL_CONTAINER, "customer", "mysqluser", "mysqlpw");
 
     private final ScheduledExecutorService mockBinlogExecutor = Executors.newScheduledThreadPool(1);
 
-    @Before
+    @TempDir private Path tempFolder;
+
+    @BeforeEach
     public void before() throws SQLException {
         TestValuesTableFactory.clearAllData();
         customDatabase.createAndInitialize();
@@ -122,13 +123,13 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
         }
     }
 
-    @After
+    @AfterEach
     public void after() {
         mockBinlogExecutor.shutdown();
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineOnce() throws Exception {
+    void testNewlyAddedTableForExistsPipelineOnce() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 FailoverType.NONE,
@@ -139,7 +140,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineOnceWithAheadBinlog() throws Exception {
+    void testNewlyAddedTableForExistsPipelineOnceWithAheadBinlog() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 FailoverType.NONE,
@@ -150,7 +151,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineTwice() throws Exception {
+    void testNewlyAddedTableForExistsPipelineTwice() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.NONE,
@@ -162,7 +163,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineTwiceWithAheadBinlog() throws Exception {
+    void testNewlyAddedTableForExistsPipelineTwiceWithAheadBinlog() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.NONE,
@@ -174,7 +175,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineTwiceWithAheadBinlogAndAutoCloseReader()
+    void testNewlyAddedTableForExistsPipelineTwiceWithAheadBinlogAndAutoCloseReader()
             throws Exception {
         Map<String, String> otherOptions = new HashMap<>();
         otherOptions.put("scan.incremental.close-idle-reader.enabled", "true");
@@ -190,7 +191,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineThrice() throws Exception {
+    void testNewlyAddedTableForExistsPipelineThrice() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.NONE,
@@ -203,7 +204,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineThriceWithAheadBinlog() throws Exception {
+    void testNewlyAddedTableForExistsPipelineThriceWithAheadBinlog() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.NONE,
@@ -216,7 +217,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineSingleParallelism() throws Exception {
+    void testNewlyAddedTableForExistsPipelineSingleParallelism() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 FailoverType.NONE,
@@ -227,8 +228,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineSingleParallelismWithAheadBinlog()
-            throws Exception {
+    void testNewlyAddedTableForExistsPipelineSingleParallelismWithAheadBinlog() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 FailoverType.NONE,
@@ -239,7 +239,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForNewlyAddedTable() throws Exception {
+    void testJobManagerFailoverForNewlyAddedTable() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.JM,
@@ -250,7 +250,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForNewlyAddedTableWithAheadBinlog() throws Exception {
+    void testJobManagerFailoverForNewlyAddedTableWithAheadBinlog() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.JM,
@@ -261,7 +261,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForNewlyAddedTable() throws Exception {
+    void testTaskManagerFailoverForNewlyAddedTable() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 FailoverType.TM,
@@ -272,7 +272,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForNewlyAddedTableWithAheadBinlog() throws Exception {
+    void testTaskManagerFailoverForNewlyAddedTableWithAheadBinlog() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 FailoverType.TM,
@@ -283,7 +283,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForRemoveTableSingleParallelism() throws Exception {
+    void testJobManagerFailoverForRemoveTableSingleParallelism() throws Exception {
         testRemoveTablesOneByOne(
                 1,
                 FailoverType.JM,
@@ -294,7 +294,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForRemoveTable() throws Exception {
+    void testJobManagerFailoverForRemoveTable() throws Exception {
         testRemoveTablesOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.JM,
@@ -305,7 +305,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForRemoveTableSingleParallelism() throws Exception {
+    void testTaskManagerFailoverForRemoveTableSingleParallelism() throws Exception {
         testRemoveTablesOneByOne(
                 1,
                 FailoverType.TM,
@@ -316,7 +316,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForRemoveTable() throws Exception {
+    void testTaskManagerFailoverForRemoveTable() throws Exception {
         testRemoveTablesOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.TM,
@@ -327,7 +327,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testRemoveTableSingleParallelism() throws Exception {
+    void testRemoveTableSingleParallelism() throws Exception {
         testRemoveTablesOneByOne(
                 1,
                 FailoverType.NONE,
@@ -338,7 +338,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testRemoveTable() throws Exception {
+    void testRemoveTable() throws Exception {
         testRemoveTablesOneByOne(
                 DEFAULT_PARALLELISM,
                 FailoverType.NONE,
@@ -349,16 +349,14 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     @Test
-    public void testRemoveAndAddNewTable() throws Exception {
+    void testRemoveAndAddNewTable() throws Exception {
         // round 1 : table0 + table1 (customers_even_dist + customers)
         // round 2 : table0 + table2 (customers_even_dist + customers_1)
         String tableId0 = customDatabase.getDatabaseName() + ".customers_even_dist";
         String tableId1 = "customers";
         String tableId2 = "customers_\\d+";
 
-        final TemporaryFolder temporaryFolder = new TemporaryFolder();
-        temporaryFolder.create();
-        final String savepointDirectory = temporaryFolder.newFolder().toURI().toString();
+        final String savepointDirectory = tempFolder.toString();
 
         String finishedSavePointPath = null;
         CollectResultIterator<RowData> iterator = null;
@@ -509,7 +507,12 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
             finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
             jobClient.cancel().get();
         }
-        temporaryFolder.delete();
+    }
+
+    @Test
+    void testNewlyAddedEmptyTableAndInsertAfterJobStart() throws Exception {
+        testNewlyAddedTableOneByOneWithCreateBeforeStart(
+                1, new HashMap<>(), "address_hangzhou", "address_beijing");
     }
 
     /** Add a collect sink in the job. */
@@ -529,7 +532,8 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
                         operator.getOperatorIdFuture(),
                         serializer,
                         accumulatorName,
-                        stream.getExecutionEnvironment().getCheckpointConfig());
+                        stream.getExecutionEnvironment().getCheckpointConfig(),
+                        10000L);
         return iterator;
     }
 
@@ -577,9 +581,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
         // step 1: create mysql tables with all tables included
         initialAddressTables(getConnection(), captureAddressTables);
 
-        final TemporaryFolder temporaryFolder = new TemporaryFolder();
-        temporaryFolder.create();
-        final String savepointDirectory = temporaryFolder.newFolder().toURI().toString();
+        final String savepointDirectory = tempFolder.toString();
 
         // get all expected data
         List<String> fetchedDataList = new ArrayList<>();
@@ -628,11 +630,12 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
                 triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
             finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
             jobClient.cancel().get();
         }
@@ -667,7 +670,8 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
             JobClient jobClient = tableResult.getJobClient().get();
 
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
             // step 3: make binlog data for all tables
             List<String> expectedBinlogDataThisRound = new ArrayList<>();
@@ -695,19 +699,20 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
             }
 
             if (failoverPhase == FailoverPhase.BINLOG
-                    && TestValuesTableFactory.getRawResults("sink").size()
+                    && TestValuesTableFactory.getRawResultsAsStrings("sink").size()
                             > fetchedDataList.size()) {
                 triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
 
             fetchedDataList.addAll(expectedBinlogDataThisRound);
             // step 4: assert fetched binlog data in this round
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
             // step 5: trigger savepoint
             finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
@@ -743,9 +748,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
         // step 1: create mysql tables with initial data
         initialAddressTables(getConnection(), captureAddressTables);
 
-        final TemporaryFolder temporaryFolder = new TemporaryFolder();
-        temporaryFolder.create();
-        final String savepointDirectory = temporaryFolder.newFolder().toURI().toString();
+        final String savepointDirectory = tempFolder.toString();
 
         // test newly added table one by one
         String finishedSavePointPath = null;
@@ -816,12 +819,13 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
                 triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             fetchedDataList.addAll(expectedSnapshotDataThisRound);
             waitForUpsertSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
 
             // step 3: make some binlog data for this round
             makeFirstPartBinlogForAddressTable(getConnection(), newlyAddedTable);
@@ -829,7 +833,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
                 triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             makeSecondPartBinlogForAddressTable(getConnection(), newlyAddedTable);
@@ -863,7 +867,8 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
             // the result size of sink may arrive fetchedDataList.size() with old data, wait one
             // checkpoint to wait retract old record and send new record
             Thread.sleep(1000);
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
 
             // step 6: trigger savepoint
             if (round != captureAddressTables.length - 1) {
@@ -893,6 +898,7 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
                         + " 'database-name' = '%s',"
                         + " 'table-name' = '%s',"
                         + " 'scan.incremental.snapshot.chunk.size' = '2',"
+                        + " 'chunk-meta.group.size' = '2',"
                         + " 'server-time-zone' = 'UTC',"
                         + " 'server-id' = '%s',"
                         + " 'scan.newly-added-table.enabled' = 'true'"
@@ -919,19 +925,12 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
 
     private StreamExecutionEnvironment getStreamExecutionEnvironment(
             String finishedSavePointPath, int parallelism) throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        Configuration configuration = new Configuration();
         if (finishedSavePointPath != null) {
-            // restore from savepoint
-            // hack for test to visit protected TestStreamEnvironment#getConfiguration() method
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-            Class<?> clazz =
-                    classLoader.loadClass(
-                            "org.apache.flink.streaming.api.environment.StreamExecutionEnvironment");
-            Field field = clazz.getDeclaredField("configuration");
-            field.setAccessible(true);
-            Configuration configuration = (Configuration) field.get(env);
             configuration.setString(SavepointConfigOptions.SAVEPOINT_PATH, finishedSavePointPath);
         }
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(configuration);
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
         env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, 100L));
@@ -1108,11 +1107,151 @@ public class NewlyAddedTableITCase extends MySqlSourceTestBase {
     private static int sinkSize(String sinkName) {
         synchronized (TestValuesTableFactory.class) {
             try {
-                return TestValuesTableFactory.getRawResults(sinkName).size();
+                return TestValuesTableFactory.getRawResultsAsStrings(sinkName).size();
             } catch (IllegalArgumentException e) {
                 // job is not started yet
                 return 0;
             }
+        }
+    }
+
+    private void testNewlyAddedTableOneByOneWithCreateBeforeStart(
+            int parallelism, Map<String, String> sourceOptions, String... captureAddressTables)
+            throws Exception {
+        final String savepointDirectory = tempFolder.toString();
+        String finishedSavePointPath = null;
+        List<String> fetchedDataList = new ArrayList<>();
+        for (int round = 0; round < captureAddressTables.length; round++) {
+            boolean insertData = round == 0;
+            initialAddressTables(getConnection(), captureAddressTables, round, insertData);
+            String[] captureTablesThisRound =
+                    Arrays.asList(captureAddressTables)
+                            .subList(0, round + 1)
+                            .toArray(new String[0]);
+            String newlyAddedTable = captureAddressTables[round];
+            StreamExecutionEnvironment env =
+                    getStreamExecutionEnvironment(finishedSavePointPath, parallelism);
+            env.setRestartStrategy(noRestart());
+            StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
+            String createTableStatement =
+                    getCreateTableStatement(sourceOptions, captureTablesThisRound);
+            tEnv.executeSql(createTableStatement);
+            tEnv.executeSql(
+                    "CREATE TABLE sink ("
+                            + " table_name STRING,"
+                            + " id BIGINT,"
+                            + " country STRING,"
+                            + " city STRING,"
+                            + " detail_address STRING,"
+                            + " primary key (city, id) not enforced"
+                            + ") WITH ("
+                            + " 'connector' = 'values',"
+                            + " 'sink-insert-only' = 'false'"
+                            + ")");
+            TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
+            JobClient jobClient = tableResult.getJobClient().get();
+            Thread.sleep(3_000);
+            String tableName = captureAddressTables[round];
+            if (!insertData) {
+                insertData(
+                        getConnection(),
+                        customDatabase.getDatabaseName() + "." + tableName,
+                        tableName.split("_")[1]);
+            }
+            // step 2: assert fetched snapshot data in this round
+            String cityName = newlyAddedTable.split("_")[1];
+            List<String> expectedSnapshotDataThisRound =
+                    Arrays.asList(
+                            format(
+                                    "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
+                                    newlyAddedTable, cityName, cityName),
+                            format(
+                                    "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
+                                    newlyAddedTable, cityName, cityName),
+                            format(
+                                    "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
+                                    newlyAddedTable, cityName, cityName));
+            fetchedDataList.addAll(expectedSnapshotDataThisRound);
+            waitForUpsertSinkSize("sink", fetchedDataList.size());
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
+            // step 3: make some binlog data for this round
+            makeFirstPartBinlogForAddressTable(getConnection(), newlyAddedTable);
+            makeSecondPartBinlogForAddressTable(getConnection(), newlyAddedTable);
+            // step 4: assert fetched binlog data in this round
+            // retract the old data with id 416874195632735147
+            fetchedDataList =
+                    fetchedDataList.stream()
+                            .filter(
+                                    r ->
+                                            !r.contains(
+                                                    format(
+                                                            "%s, 416874195632735147",
+                                                            newlyAddedTable)))
+                            .collect(Collectors.toList());
+            List<String> expectedBinlogUpsertDataThisRound =
+                    Arrays.asList(
+                            // add the new data with id 416874195632735147
+                            format(
+                                    "+I[%s, 416874195632735147, CHINA, %s, %s West Town address 1]",
+                                    newlyAddedTable, cityName, cityName),
+                            format(
+                                    "+I[%s, 417022095255614380, China, %s, %s West Town address 4]",
+                                    newlyAddedTable, cityName, cityName));
+            // step 5: assert fetched binlog data in this round
+            fetchedDataList.addAll(expectedBinlogUpsertDataThisRound);
+            waitForUpsertSinkSize("sink", fetchedDataList.size());
+            // the result size of sink may arrive fetchedDataList.size() with old data, wait one
+            // checkpoint to wait retract old record and send new record
+            Thread.sleep(1000);
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
+            // step 6: trigger savepoint
+            if (round != captureAddressTables.length - 1) {
+                finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
+            }
+            jobClient.cancel().get();
+        }
+    }
+
+    private void initialAddressTables(
+            JdbcConnection connection, String[] addressTables, int round, boolean insertData)
+            throws SQLException {
+        try {
+            connection.setAutoCommit(false);
+            String tableName = addressTables[round];
+            String tableId = customDatabase.getDatabaseName() + "." + tableName;
+            String cityName = tableName.split("_")[1];
+            connection.execute(
+                    "CREATE TABLE "
+                            + tableId
+                            + "("
+                            + "  id BIGINT UNSIGNED NOT NULL PRIMARY KEY,"
+                            + "  country VARCHAR(255) NOT NULL,"
+                            + "  city VARCHAR(255) NOT NULL,"
+                            + "  detail_address VARCHAR(1024)"
+                            + ");");
+            if (insertData) {
+                insertData(connection, tableId, cityName);
+            }
+            connection.commit();
+        } finally {
+            connection.close();
+        }
+    }
+
+    private void insertData(JdbcConnection connection, String tableId, String cityName)
+            throws SQLException {
+        try {
+            connection.execute(
+                    format(
+                            "INSERT INTO  %s "
+                                    + "VALUES (416874195632735147, 'China', '%s', '%s West Town address 1'),"
+                                    + "       (416927583791428523, 'China', '%s', '%s West Town address 2'),"
+                                    + "       (417022095255614379, 'China', '%s', '%s West Town address 3');",
+                            tableId, cityName, cityName, cityName, cityName, cityName, cityName));
+        } finally {
+            connection.close();
         }
     }
 }

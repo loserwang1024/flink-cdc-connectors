@@ -50,6 +50,8 @@ public class MySqlValidator implements Validator {
 
     private static final String BINLOG_FORMAT_ROW = "ROW";
     private static final String BINLOG_FORMAT_IMAGE_FULL = "FULL";
+    private static final String DEFAULT_BINLOG_ROW_VALUE_OPTIONS = "";
+    private static final int TIME_ZONE_TOLERANCE_SECONDS = 30 * 60;
 
     private final Properties dbzProperties;
     private final MySqlSourceConfig sourceConfig;
@@ -70,6 +72,7 @@ public class MySqlValidator implements Validator {
             checkVersion(connection);
             checkBinlogFormat(connection);
             checkBinlogRowImage(connection);
+            checkBinlogRowValueOptions(connection);
             checkTimeZone(connection);
         } catch (SQLException ex) {
             throw new TableException(
@@ -159,6 +162,30 @@ public class MySqlValidator implements Validator {
         }
     }
 
+    /** Check whether the binlog row value options is empty. */
+    private void checkBinlogRowValueOptions(JdbcConnection connection) throws SQLException {
+        String rowValueOptions =
+                connection
+                        .queryAndMap(
+                                "SHOW GLOBAL VARIABLES LIKE 'binlog_row_value_options'",
+                                rs ->
+                                        rs.next()
+                                                ? rs.getString(2)
+                                                : DEFAULT_BINLOG_ROW_VALUE_OPTIONS)
+                        .trim()
+                        .toUpperCase();
+        // This setting was introduced in MySQL 8.0+ with default of empty string ''
+        // For older versions, assume empty string ''
+        if (!DEFAULT_BINLOG_ROW_VALUE_OPTIONS.equals(rowValueOptions)) {
+            throw new ValidationException(
+                    String.format(
+                            "The MySQL server is configured with binlog_row_value_options=%s, which is possible to cause losing some binlog events "
+                                    + "for the mysql cdc connector. Please remove the binlog_row_value_options setting in the MySQL server and rerun the job."
+                                    + "See more details at https://dev.mysql.com/doc/refman/8.0/en/replication-features-json.html.",
+                            rowValueOptions));
+        }
+    }
+
     /** Check whether the server timezone matches the configured timezone. */
     private void checkTimeZone(JdbcConnection connection) throws SQLException {
         String timeZoneProperty = dbzProperties.getProperty("database.serverTimezone");
@@ -180,7 +207,10 @@ public class MySqlValidator implements Validator {
                 zoneId.getRules().getOffset(LocalDateTime.now()).getTotalSeconds();
 
         if (!timeDiffMatchesZoneOffset(
-                timeDiffInSeconds, timeZoneOffsetInSeconds, inDayLightTime)) {
+                timeDiffInSeconds,
+                timeZoneOffsetInSeconds,
+                inDayLightTime,
+                TIME_ZONE_TOLERANCE_SECONDS)) {
             throw new ValidationException(
                     String.format(
                             "The MySQL server has a timezone offset (%d seconds %s UTC) which does not match "
@@ -194,10 +224,14 @@ public class MySqlValidator implements Validator {
     }
 
     private boolean timeDiffMatchesZoneOffset(
-            int timeDiffInSeconds, int timeZoneOffsetInSeconds, boolean inDayLightTime) {
+            int timeDiffInSeconds,
+            int timeZoneOffsetInSeconds,
+            boolean inDayLightTime,
+            int toleranceInSeconds) {
         // Trivial case for non-DST timezone
         if (!inDayLightTime) {
-            return timeDiffInSeconds == timeZoneOffsetInSeconds;
+            return equalsWithTolerance(
+                    timeDiffInSeconds, timeZoneOffsetInSeconds, toleranceInSeconds);
         }
 
         // There are two cases when Daylight Saving Time is in effect,
@@ -206,7 +240,14 @@ public class MySqlValidator implements Validator {
         // 2) MySQL timezone has been fixed to non-DST, like using 'Pacific Standard Time' all year
         // long.
         // thus we need to accept both.
-        return timeDiffInSeconds == timeZoneOffsetInSeconds
-                || timeDiffInSeconds == timeZoneOffsetInSeconds - TimeUnit.HOURS.toSeconds(1);
+        return equalsWithTolerance(timeDiffInSeconds, timeZoneOffsetInSeconds, toleranceInSeconds)
+                || equalsWithTolerance(
+                        timeDiffInSeconds,
+                        timeZoneOffsetInSeconds - TimeUnit.HOURS.toSeconds(1),
+                        toleranceInSeconds);
+    }
+
+    private boolean equalsWithTolerance(long val1, long val2, long tolerance) {
+        return Math.abs(val1 - val2) <= tolerance;
     }
 }

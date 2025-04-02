@@ -18,6 +18,7 @@
 package org.apache.flink.cdc.connectors.mongodb.source;
 
 import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
+import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
 import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
@@ -26,53 +27,68 @@ import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.Rule;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.lifecycle.Startables;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.util.stream.Stream;
+import java.util.Objects;
 
 /** MongoDBSourceTestBase for MongoDB >= 5.0.3. */
+@Testcontainers
 public class MongoDBSourceTestBase {
-
-    protected static MongoClient mongodbClient;
-
-    protected static final int DEFAULT_PARALLELISM = 4;
-
-    @Rule
-    public final MiniClusterWithClientResource miniClusterResource =
-            new MiniClusterWithClientResource(
-                    new MiniClusterResourceConfiguration.Builder()
-                            .setNumberTaskManagers(1)
-                            .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
-                            .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
-                            .withHaLeadershipControl()
-                            .build());
-
-    @BeforeClass
-    public static void startContainers() {
-        LOG.info("Starting containers...");
-        Startables.deepStart(Stream.of(CONTAINER)).join();
-
-        MongoClientSettings settings =
-                MongoClientSettings.builder()
-                        .applyConnectionString(
-                                new ConnectionString(CONTAINER.getConnectionString()))
-                        .build();
-        mongodbClient = MongoClients.create(settings);
-
-        LOG.info("Containers are started.");
-    }
 
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBSourceTestBase.class);
 
-    @ClassRule
-    public static final MongoDBContainer CONTAINER =
-            new MongoDBContainer("mongo:6.0.9")
+    public static String getMongoVersion() {
+        String specifiedMongoVersion = System.getProperty("specifiedMongoVersion");
+        if (Objects.isNull(specifiedMongoVersion)) {
+            throw new IllegalArgumentException(
+                    "No MongoDB version specified to run this test. Please use -DspecifiedMongoVersion to pass one.");
+        }
+        return specifiedMongoVersion;
+    }
+
+    protected static final int DEFAULT_PARALLELISM = 4;
+
+    @Container
+    public static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
                     .withSharding()
                     .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    protected MongoClient mongodbClient;
+
+    @RegisterExtension
+    public final ExternalResourceProxy<MiniClusterWithClientResource> miniClusterResource =
+            new ExternalResourceProxy<>(
+                    new MiniClusterWithClientResource(
+                            new MiniClusterResourceConfiguration.Builder()
+                                    .setNumberTaskManagers(1)
+                                    .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
+                                    .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
+                                    .withHaLeadershipControl()
+                                    .build()));
+
+    @BeforeEach
+    public void createClients() {
+        MongoClientSettings settings =
+                MongoClientSettings.builder()
+                        .applyConnectionString(
+                                new ConnectionString(MONGO_CONTAINER.getConnectionString()))
+                        .build();
+        mongodbClient = MongoClients.create(settings);
+    }
+
+    @AfterEach
+    public void destroyClients() {
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
+    }
 }

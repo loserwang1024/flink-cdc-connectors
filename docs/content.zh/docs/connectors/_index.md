@@ -1,6 +1,5 @@
 ---
-title: Connectors
-icon: <i class="fa fa-random title maindish" aria-hidden="true"></i>
+title: 连接器
 bold: true
 bookCollapseSection: true
 weight: 3

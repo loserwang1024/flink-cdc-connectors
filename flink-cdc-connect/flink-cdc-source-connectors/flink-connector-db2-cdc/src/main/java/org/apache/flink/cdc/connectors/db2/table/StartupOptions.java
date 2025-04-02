@@ -17,15 +17,18 @@
 
 package org.apache.flink.cdc.connectors.db2.table;
 
+import org.apache.flink.cdc.connectors.base.options.StartupMode;
+
 import java.util.Objects;
 
 /** Debezium startup options. */
 public final class StartupOptions {
+
     public final StartupMode startupMode;
 
     /**
      * Performs an initial snapshot on the monitored database tables upon first startup, and
-     * continue to read change events from the database’s redo logs.
+     * continue to read change events from the database's redo logs.
      */
     public static StartupOptions initial() {
         return new StartupOptions(StartupMode.INITIAL);

@@ -18,29 +18,37 @@
 package org.apache.flink.cdc.cli.utils;
 
 import org.apache.flink.cdc.common.configuration.Configuration;
-import org.apache.flink.cdc.composer.flink.FlinkPipelineComposer;
+import org.apache.flink.core.fs.Path;
 
-import java.nio.file.Path;
-import java.util.List;
+import org.apache.flink.shaded.guava31.com.google.common.base.Joiner;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
 
 /** Utilities for handling Flink configuration and environment. */
 public class FlinkEnvironmentUtils {
 
+    private static final Logger LOG = LoggerFactory.getLogger(FlinkEnvironmentUtils.class);
     private static final String FLINK_CONF_DIR = "conf";
-    private static final String FLINK_CONF_FILENAME = "flink-conf.yaml";
+    private static final String LEGACY_FLINK_CONF_FILENAME = "flink-conf.yaml";
+    private static final String FLINK_CONF_FILENAME = "config.yaml";
 
     public static Configuration loadFlinkConfiguration(Path flinkHome) throws Exception {
-        Path flinkConfPath = flinkHome.resolve(FLINK_CONF_DIR).resolve(FLINK_CONF_FILENAME);
-        return ConfigurationUtils.loadMapFormattedConfig(flinkConfPath);
-    }
-
-    public static FlinkPipelineComposer createComposer(
-            boolean useMiniCluster, Configuration flinkConfig, List<Path> additionalJars) {
-        if (useMiniCluster) {
-            return FlinkPipelineComposer.ofMiniCluster();
+        Path flinkConfPath =
+                new Path(
+                        flinkHome,
+                        Joiner.on(File.separator).join(FLINK_CONF_DIR, FLINK_CONF_FILENAME));
+        if (flinkConfPath.getFileSystem().exists(flinkConfPath)) {
+            return ConfigurationUtils.loadConfigFile(flinkConfPath);
+        } else {
+            return ConfigurationUtils.loadConfigFile(
+                    new Path(
+                            flinkHome,
+                            Joiner.on(File.separator)
+                                    .join(FLINK_CONF_DIR, LEGACY_FLINK_CONF_FILENAME)),
+                    true);
         }
-        return FlinkPipelineComposer.ofRemoteCluster(
-                org.apache.flink.configuration.Configuration.fromMap(flinkConfig.toMap()),
-                additionalJars);
     }
 }

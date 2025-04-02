@@ -25,6 +25,7 @@ import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.DropColumnEvent;
 import org.apache.flink.cdc.common.event.RenameColumnEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.exceptions.SchemaEvolveException;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
@@ -36,10 +37,10 @@ import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.common.types.VarCharType;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
 
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,7 +49,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Tests to cover the ability of data consumption and schema evolution from ValuesDatabase. */
-public class ValuesDatabaseTest {
+class ValuesDatabaseTest {
 
     private MetadataApplier metadataApplier;
 
@@ -90,8 +91,8 @@ public class ValuesDatabaseTest {
      *
      * <p>｜----｜----｜.
      */
-    @Before
-    public void before() {
+    @BeforeEach
+    public void before() throws SchemaEvolveException {
         ValuesDatabase.clear();
         metadataApplier = new ValuesDatabase.ValuesMetadataApplier();
         metadataAccessor = new ValuesDatabase.ValuesMetadataAccessor();
@@ -139,27 +140,27 @@ public class ValuesDatabaseTest {
         ValuesDatabase.applyDataChangeEvent(insertEvent3);
     }
 
-    @After
+    @AfterEach
     public void after() {
         ValuesDatabase.clear();
     }
 
     @Test
-    public void testValuesMetadataAccessor() {
+    void testValuesMetadataAccessor() {
         Schema schema =
                 Schema.newBuilder()
                         .physicalColumn("col1", new CharType())
                         .physicalColumn("col2", new CharType())
                         .primaryKey("col1")
                         .build();
-        Assert.assertEquals(2, metadataAccessor.listNamespaces().size());
-        Assert.assertEquals(2, metadataAccessor.listSchemas(null).size());
-        Assert.assertEquals(1, metadataAccessor.listTables(null, "default").size());
-        Assert.assertEquals(schema, metadataAccessor.getTableSchema(table1));
+        Assertions.assertThat(metadataAccessor.listNamespaces()).hasSize(2);
+        Assertions.assertThat(metadataAccessor.listSchemas(null)).hasSize(2);
+        Assertions.assertThat(metadataAccessor.listTables(null, "default")).hasSize(1);
+        Assertions.assertThat(metadataAccessor.getTableSchema(table1)).isEqualTo(schema);
     }
 
     @Test
-    public void testApplySchemaChangeEvent() {
+    void testApplySchemaChangeEvent() throws SchemaEvolveException {
         AddColumnEvent.ColumnWithPosition columnWithPosition =
                 new AddColumnEvent.ColumnWithPosition(
                         Column.physicalColumn("col3", new CharType()));
@@ -173,7 +174,7 @@ public class ValuesDatabaseTest {
                         .physicalColumn("col3", new CharType())
                         .primaryKey("col1")
                         .build();
-        Assert.assertEquals(schema, metadataAccessor.getTableSchema(table1));
+        Assertions.assertThat(metadataAccessor.getTableSchema(table1)).isEqualTo(schema);
 
         Map<String, String> nameMapping = new HashMap<>();
         nameMapping.put("col2", "newCol2");
@@ -187,7 +188,7 @@ public class ValuesDatabaseTest {
                         .physicalColumn("newCol3", new CharType())
                         .primaryKey("col1")
                         .build();
-        Assert.assertEquals(schema, metadataAccessor.getTableSchema(table1));
+        Assertions.assertThat(metadataAccessor.getTableSchema(table1)).isEqualTo(schema);
 
         DropColumnEvent dropColumnEvent =
                 new DropColumnEvent(table1, Collections.singletonList("newCol2"));
@@ -198,7 +199,7 @@ public class ValuesDatabaseTest {
                         .physicalColumn("newCol3", new CharType())
                         .primaryKey("col1")
                         .build();
-        Assert.assertEquals(schema, metadataAccessor.getTableSchema(table1));
+        Assertions.assertThat(metadataAccessor.getTableSchema(table1)).isEqualTo(schema);
 
         Map<String, DataType> typeMapping = new HashMap<>();
         typeMapping.put("newCol3", new VarCharType());
@@ -210,16 +211,16 @@ public class ValuesDatabaseTest {
                         .physicalColumn("newCol3", new VarCharType())
                         .primaryKey("col1")
                         .build();
-        Assert.assertEquals(schema, metadataAccessor.getTableSchema(table1));
+        Assertions.assertThat(metadataAccessor.getTableSchema(table1)).isEqualTo(schema);
     }
 
     @Test
-    public void testApplyDataChangeEvent() {
+    void testApplyDataChangeEvent() {
         List<String> results = new ArrayList<>();
         results.add("default.default.table1:col1=1;col2=1");
         results.add("default.default.table1:col1=2;col2=2");
         results.add("default.default.table1:col1=3;col2=3");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
 
         BinaryRecordDataGenerator generator =
                 new BinaryRecordDataGenerator(RowType.of(DataTypes.STRING(), DataTypes.STRING()));
@@ -235,7 +236,7 @@ public class ValuesDatabaseTest {
         results.clear();
         results.add("default.default.table1:col1=2;col2=2");
         results.add("default.default.table1:col1=3;col2=3");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
 
         DataChangeEvent updateEvent =
                 DataChangeEvent.updateEvent(
@@ -254,11 +255,11 @@ public class ValuesDatabaseTest {
         results.clear();
         results.add("default.default.table1:col1=2;col2=x");
         results.add("default.default.table1:col1=3;col2=3");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
     }
 
     @Test
-    public void testSchemaChangeWithExistedData() {
+    void testSchemaChangeWithExistedData() throws SchemaEvolveException {
         AddColumnEvent.ColumnWithPosition columnWithPosition =
                 new AddColumnEvent.ColumnWithPosition(
                         Column.physicalColumn("col3", new CharType()));
@@ -269,7 +270,7 @@ public class ValuesDatabaseTest {
         results.add("default.default.table1:col1=1;col2=1;col3=");
         results.add("default.default.table1:col1=2;col2=2;col3=");
         results.add("default.default.table1:col1=3;col2=3;col3=");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
 
         Map<String, String> nameMapping = new HashMap<>();
         nameMapping.put("col2", "newCol2");
@@ -280,7 +281,7 @@ public class ValuesDatabaseTest {
         results.add("default.default.table1:col1=1;newCol2=1;newCol3=");
         results.add("default.default.table1:col1=2;newCol2=2;newCol3=");
         results.add("default.default.table1:col1=3;newCol2=3;newCol3=");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
 
         DropColumnEvent dropColumnEvent =
                 new DropColumnEvent(table1, Collections.singletonList("newCol2"));
@@ -289,7 +290,7 @@ public class ValuesDatabaseTest {
         results.add("default.default.table1:col1=1;newCol3=");
         results.add("default.default.table1:col1=2;newCol3=");
         results.add("default.default.table1:col1=3;newCol3=");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
 
         Map<String, DataType> typeMapping = new HashMap<>();
         typeMapping.put("newCol3", new VarCharType());
@@ -299,6 +300,6 @@ public class ValuesDatabaseTest {
         results.add("default.default.table1:col1=1;newCol3=");
         results.add("default.default.table1:col1=2;newCol3=");
         results.add("default.default.table1:col1=3;newCol3=");
-        Assert.assertEquals(results, ValuesDatabase.getResults(table1));
+        Assertions.assertThat(ValuesDatabase.getResults(table1)).isEqualTo(results);
     }
 }

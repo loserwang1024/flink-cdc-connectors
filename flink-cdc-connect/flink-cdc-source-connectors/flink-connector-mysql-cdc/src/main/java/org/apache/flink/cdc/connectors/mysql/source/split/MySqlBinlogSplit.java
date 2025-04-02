@@ -22,6 +22,8 @@ import org.apache.flink.cdc.connectors.mysql.source.offset.BinlogOffset;
 import io.debezium.relational.TableId;
 import io.debezium.relational.Tables;
 import io.debezium.relational.history.TableChanges.TableChange;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
@@ -29,10 +31,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /** The split to describe the binlog of MySql table(s). */
 public class MySqlBinlogSplit extends MySqlSplit {
+    private static final Logger LOG = LoggerFactory.getLogger(MySqlBinlogSplit.class);
+    private static final int TABLES_LENGTH_FOR_LOG = 3;
 
     private final BinlogOffset startingOffset;
     private final BinlogOffset endingOffset;
@@ -40,6 +46,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
     private final Map<TableId, TableChange> tableSchemas;
     private final int totalFinishedSplitSize;
     private final boolean isSuspended;
+    private final String tablesForLog;
     @Nullable transient byte[] serializedFormCache;
 
     public MySqlBinlogSplit(
@@ -57,6 +64,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
         this.isSuspended = isSuspended;
+        this.tablesForLog = getTablesForLog();
     }
 
     public MySqlBinlogSplit(
@@ -73,6 +81,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
         this.tableSchemas = tableSchemas;
         this.totalFinishedSplitSize = totalFinishedSplitSize;
         this.isSuspended = false;
+        this.tablesForLog = getTablesForLog();
     }
 
     public BinlogOffset getStartingOffset() {
@@ -102,6 +111,20 @@ public class MySqlBinlogSplit extends MySqlSplit {
 
     public boolean isCompletedSplit() {
         return totalFinishedSplitSize == finishedSnapshotSplitInfos.size();
+    }
+
+    private String getTablesForLog() {
+        List<TableId> tablesForLog = new ArrayList<>();
+        if (tableSchemas != null) {
+            List<TableId> tableIds = new ArrayList<>(new TreeSet(tableSchemas.keySet()));
+            // Truncate tables length to avoid printing too much log
+            tablesForLog = tableIds.subList(0, Math.min(tableIds.size(), TABLES_LENGTH_FOR_LOG));
+        }
+        return tablesForLog.toString();
+    }
+
+    public String getTables() {
+        return tablesForLog;
     }
 
     @Override
@@ -142,6 +165,8 @@ public class MySqlBinlogSplit extends MySqlSplit {
                 + "splitId='"
                 + splitId
                 + '\''
+                + ", tables="
+                + tablesForLog
                 + ", offset="
                 + startingOffset
                 + ", endOffset="
@@ -179,20 +204,47 @@ public class MySqlBinlogSplit extends MySqlSplit {
      *
      * <p>When restore from a checkpoint, the finished split infos may contain some splits from the
      * deleted tables. We need to remove these splits from the total finished split infos and update
-     * the size.
+     * the size, while also removing the outdated tables from the table schemas of binlog split.
      */
     public static MySqlBinlogSplit filterOutdatedSplitInfos(
             MySqlBinlogSplit binlogSplit, Tables.TableFilter currentTableFilter) {
+        Map<TableId, TableChange> filteredTableSchemas =
+                binlogSplit.getTableSchemas().entrySet().stream()
+                        .filter(entry -> currentTableFilter.isIncluded(entry.getKey()))
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        Set<TableId> tablesToRemoveInFinishedSnapshotSplitInfos =
+                binlogSplit.getFinishedSnapshotSplitInfos().stream()
+                        .filter(i -> !currentTableFilter.isIncluded(i.getTableId()))
+                        .map(split -> split.getTableId())
+                        .collect(Collectors.toSet());
+        if (tablesToRemoveInFinishedSnapshotSplitInfos.isEmpty()) {
+            return new MySqlBinlogSplit(
+                    binlogSplit.splitId,
+                    binlogSplit.getStartingOffset(),
+                    binlogSplit.getEndingOffset(),
+                    binlogSplit.getFinishedSnapshotSplitInfos(),
+                    filteredTableSchemas,
+                    binlogSplit.totalFinishedSplitSize,
+                    binlogSplit.isSuspended());
+        }
+
+        LOG.info(
+                "Reader remove tables after restart: {}",
+                tablesToRemoveInFinishedSnapshotSplitInfos);
         List<FinishedSnapshotSplitInfo> allFinishedSnapshotSplitInfos =
                 binlogSplit.getFinishedSnapshotSplitInfos().stream()
-                        .filter(i -> currentTableFilter.isIncluded(i.getTableId()))
+                        .filter(
+                                i ->
+                                        !tablesToRemoveInFinishedSnapshotSplitInfos.contains(
+                                                i.getTableId()))
                         .collect(Collectors.toList());
         return new MySqlBinlogSplit(
                 binlogSplit.splitId,
                 binlogSplit.getStartingOffset(),
                 binlogSplit.getEndingOffset(),
                 allFinishedSnapshotSplitInfos,
-                binlogSplit.getTableSchemas(),
+                filteredTableSchemas,
                 binlogSplit.getTotalFinishedSplitSize()
                         - (binlogSplit.getFinishedSnapshotSplitInfos().size()
                                 - allFinishedSnapshotSplitInfos.size()),

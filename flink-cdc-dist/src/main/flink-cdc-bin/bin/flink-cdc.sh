@@ -21,9 +21,20 @@ args=("$@")
 # Check if FLINK_HOME is set in command-line arguments by "--flink-home"
 for ((i=0; i < ${#args[@]}; i++)); do
     case "${args[i]}" in
+        --flink-home=*)
+            # Extract the value after "="
+            FLINK_HOME_VALUE="${args[i]#*=}"
+            # Check if the value is not empty
+            if [[ -n "$FLINK_HOME_VALUE" ]]; then
+                FLINK_HOME="$FLINK_HOME_VALUE"
+                echo "[INFO] Set FLINK_HOME to ${FLINK_HOME_VALUE}."
+                break
+            fi
+            ;;
         --flink-home)
             if [[ -n "${args[i+1]}" ]]; then
                 FLINK_HOME="${args[i+1]}"
+                echo "[INFO] Set FLINK_HOME to ${FLINK_HOME}."
                 break
             fi
             ;;
@@ -70,4 +81,4 @@ LOG=$FLINK_CDC_LOG/flink-cdc-cli-$HOSTNAME.log
 LOG_SETTINGS=(-Dlog.file="$LOG" -Dlog4j.configuration=file:"$FLINK_CDC_CONF"/log4j-cli.properties -Dlog4j.configurationFile=file:"$FLINK_CDC_CONF"/log4j-cli.properties)
 
 # JAVA_RUN should have been setup in config.sh
-exec "$JAVA_RUN" -classpath "$CLASSPATH" "${LOG_SETTINGS[@]}" com.ververica.cdc.cli.CliFrontend "$@"
+exec "$JAVA_RUN" -classpath "$CLASSPATH" "${LOG_SETTINGS[@]}" org.apache.flink.cdc.cli.CliFrontend "$@"

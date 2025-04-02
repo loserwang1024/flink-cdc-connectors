@@ -24,14 +24,14 @@ import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.types.Row;
 
+import org.assertj.core.api.Assertions;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static org.junit.Assert.fail;
 
 /** MongoDB test utilities. */
 public class MongoDBTestUtils {
@@ -53,10 +53,11 @@ public class MongoDBTestUtils {
         long deadline = System.nanoTime() + timeUnit.toNanos(timeout);
         while (sinkSize(sinkName) < expectedSize) {
             if (System.nanoTime() > deadline) {
-                fail(
+                Assertions.fail(
                         "Wait for sink size timeout, raw results: \n"
                                 + String.join(
-                                        "\n", TestValuesTableFactory.getRawResults(sinkName)));
+                                        "\n",
+                                        TestValuesTableFactory.getRawResultsAsStrings(sinkName)));
             }
             Thread.sleep(100);
         }
@@ -65,7 +66,7 @@ public class MongoDBTestUtils {
     public static int sinkSize(String sinkName) {
         synchronized (TestValuesTableFactory.class) {
             try {
-                return TestValuesTableFactory.getRawResults(sinkName).size();
+                return TestValuesTableFactory.getRawResultsAsStrings(sinkName).size();
             } catch (IllegalArgumentException e) {
                 // job is not started yet
                 return 0;

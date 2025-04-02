@@ -25,10 +25,13 @@ import org.apache.flink.cdc.common.event.ChangeEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.FlushEvent;
+import org.apache.flink.cdc.common.event.SchemaChangeEventType;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
+import org.apache.flink.cdc.runtime.operators.sink.exception.SinkWrapperException;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.StateInitializationContext;
+import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.connector.sink2.CommittableMessage;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
@@ -36,9 +39,11 @@ import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
+import org.apache.flink.streaming.runtime.watermarkstatus.WatermarkStatus;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -124,34 +129,61 @@ public class DataSinkWriterOperator<CommT> extends AbstractStreamOperator<Commit
     }
 
     @Override
+    public void snapshotState(StateSnapshotContext context) throws Exception {
+        this.<AbstractStreamOperator<CommittableMessage<CommT>>>getFlinkWriterOperator()
+                .snapshotState(context);
+    }
+
+    @Override
+    public void processWatermark(Watermark mark) throws Exception {
+        super.processWatermark(mark);
+        this.<AbstractStreamOperator<CommittableMessage<CommT>>>getFlinkWriterOperator()
+                .processWatermark(mark);
+    }
+
+    @Override
+    public void processWatermarkStatus(WatermarkStatus watermarkStatus) throws Exception {
+        super.processWatermarkStatus(watermarkStatus);
+        this.<AbstractStreamOperator<CommittableMessage<CommT>>>getFlinkWriterOperator()
+                .processWatermarkStatus(watermarkStatus);
+    }
+
+    @Override
     public void processElement(StreamRecord<Event> element) throws Exception {
         Event event = element.getValue();
 
-        // FlushEvent triggers flush
-        if (event instanceof FlushEvent) {
-            handleFlushEvent(((FlushEvent) event));
-            return;
-        }
+        try {
+            // FlushEvent triggers flush
+            if (event instanceof FlushEvent) {
+                handleFlushEvent(((FlushEvent) event));
+                return;
+            }
 
-        // CreateTableEvent marks the table as processed directly
-        if (event instanceof CreateTableEvent) {
-            processedTableIds.add(((CreateTableEvent) event).tableId());
+            // CreateTableEvent marks the table as processed directly
+            if (event instanceof CreateTableEvent) {
+                processedTableIds.add(((CreateTableEvent) event).tableId());
+                this
+                        .<OneInputStreamOperator<Event, CommittableMessage<CommT>>>
+                                getFlinkWriterOperator()
+                        .processElement(element);
+                return;
+            }
+
+            // Check if the table is processed before emitting all other events, because we have to
+            // make
+            // sure that sink have a view of the full schema before processing any change events,
+            // including schema changes.
+            ChangeEvent changeEvent = (ChangeEvent) event;
+            if (!processedTableIds.contains(changeEvent.tableId())) {
+                emitLatestSchema(changeEvent.tableId());
+                processedTableIds.add(changeEvent.tableId());
+            }
+            processedTableIds.add(changeEvent.tableId());
             this.<OneInputStreamOperator<Event, CommittableMessage<CommT>>>getFlinkWriterOperator()
                     .processElement(element);
-            return;
+        } catch (Exception e) {
+            throw new SinkWrapperException(event, e);
         }
-
-        // Check if the table is processed before emitting all other events, because we have to make
-        // sure that sink have a view of the full schema before processing any change events,
-        // including schema changes.
-        ChangeEvent changeEvent = (ChangeEvent) event;
-        if (!processedTableIds.contains(changeEvent.tableId())) {
-            emitLatestSchema(changeEvent.tableId());
-            processedTableIds.add(changeEvent.tableId());
-        }
-        processedTableIds.add(changeEvent.tableId());
-        this.<OneInputStreamOperator<Event, CommittableMessage<CommT>>>getFlinkWriterOperator()
-                .processElement(element);
     }
 
     @Override
@@ -175,12 +207,27 @@ public class DataSinkWriterOperator<CommT> extends AbstractStreamOperator<Commit
 
     private void handleFlushEvent(FlushEvent event) throws Exception {
         copySinkWriter.flush(false);
+        if (event.getSchemaChangeEventType() != SchemaChangeEventType.CREATE_TABLE
+                && event.getSchemaChangeEventType() != SchemaChangeEventType.DROP_TABLE) {
+            event.getTableIds().stream()
+                    .filter(tableId -> !processedTableIds.contains(tableId))
+                    .forEach(
+                            tableId -> {
+                                LOG.info("Table {} has not been processed", tableId);
+                                try {
+                                    emitLatestSchema(tableId);
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
+                                processedTableIds.add(tableId);
+                            });
+        }
         schemaEvolutionClient.notifyFlushSuccess(
-                getRuntimeContext().getIndexOfThisSubtask(), event.getTableId());
+                getRuntimeContext().getIndexOfThisSubtask(), event.getSourceSubTaskId());
     }
 
     private void emitLatestSchema(TableId tableId) throws Exception {
-        Optional<Schema> schema = schemaEvolutionClient.getLatestSchema(tableId);
+        Optional<Schema> schema = schemaEvolutionClient.getLatestEvolvedSchema(tableId);
         if (schema.isPresent()) {
             // request and process CreateTableEvent because SinkWriter need to retrieve
             // Schema to deserialize RecordData after resuming job.

@@ -23,11 +23,15 @@ import org.apache.flink.cdc.common.configuration.ConfigOptions;
 import org.apache.flink.cdc.common.configuration.description.Description;
 import org.apache.flink.cdc.common.configuration.description.ListElement;
 
+import java.time.Duration;
+
 import static org.apache.flink.cdc.common.configuration.description.TextElement.text;
 
 /** Predefined pipeline configuration options. */
 @PublicEvolving
 public class PipelineOptions {
+
+    public static final Duration DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT = Duration.ofMinutes(3);
 
     public static final ConfigOption<String> PIPELINE_NAME =
             ConfigOptions.key("name")
@@ -38,22 +42,26 @@ public class PipelineOptions {
     public static final ConfigOption<Integer> PIPELINE_PARALLELISM =
             ConfigOptions.key("parallelism")
                     .intType()
-                    .noDefaultValue()
+                    .defaultValue(1)
                     .withDescription("Parallelism of the pipeline");
 
     public static final ConfigOption<SchemaChangeBehavior> PIPELINE_SCHEMA_CHANGE_BEHAVIOR =
             ConfigOptions.key("schema.change.behavior")
                     .enumType(SchemaChangeBehavior.class)
-                    .defaultValue(SchemaChangeBehavior.EVOLVE)
+                    .defaultValue(SchemaChangeBehavior.LENIENT)
                     .withDescription(
                             Description.builder()
                                     .text("Behavior for handling schema change events. ")
                                     .linebreak()
                                     .add(
                                             ListElement.list(
+                                                    text("IGNORE: Drop all schema change events."),
+                                                    text(
+                                                            "LENIENT: Apply schema changes to downstream tolerantly, and keeps executing if applying fails."),
+                                                    text(
+                                                            "TRY_EVOLVE: Apply schema changes to downstream, but keeps executing if applying fails."),
                                                     text(
                                                             "EVOLVE: Apply schema changes to downstream. This requires sink to support handling schema changes."),
-                                                    text("IGNORE: Drop all schema change events."),
                                                     text(
                                                             "EXCEPTION: Throw an exception to terminate the sync pipeline.")))
                                     .build());
@@ -84,6 +92,13 @@ public class PipelineOptions {
                     .defaultValue("$$_schema_operator_$$")
                     .withDescription(
                             "The unique ID for schema operator. This ID will be used for inter-operator communications and must be unique across operators.");
+
+    public static final ConfigOption<Duration> PIPELINE_SCHEMA_OPERATOR_RPC_TIMEOUT =
+            ConfigOptions.key("schema-operator.rpc-timeout")
+                    .durationType()
+                    .defaultValue(DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT)
+                    .withDescription(
+                            "The timeout time for SchemaOperator to wait downstream SchemaChangeEvent applying finished, the default value is 3 minutes.");
 
     private PipelineOptions() {}
 }

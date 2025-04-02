@@ -34,8 +34,8 @@ import org.apache.flink.cdc.common.source.DataSource;
 import org.apache.flink.cdc.common.source.EventSourceProvider;
 import org.apache.flink.cdc.common.source.FlinkSourceProvider;
 import org.apache.flink.cdc.common.source.MetadataAccessor;
+import org.apache.flink.cdc.common.source.SupportedMetadataColumn;
 import org.apache.flink.cdc.connectors.values.ValuesDatabase;
-import org.apache.flink.connector.base.source.hybrid.HybridSource;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
@@ -73,16 +73,19 @@ public class ValuesDataSource implements DataSource {
     @Override
     public EventSourceProvider getEventSourceProvider() {
         ValuesDataSourceHelper.setSourceEvents(eventSetId);
-        HybridSource<Event> hybridSource =
-                HybridSource.builder(new ValuesSource(failAtPos, eventSetId, true))
-                        .addSource(new ValuesSource(failAtPos, eventSetId, false))
-                        .build();
-        return FlinkSourceProvider.of(hybridSource);
+        return FlinkSourceProvider.of(new ValuesSource(failAtPos, eventSetId, false));
     }
 
     @Override
     public MetadataAccessor getMetadataAccessor() {
         return new ValuesDatabase.ValuesMetadataAccessor();
+    }
+
+    @Override
+    public SupportedMetadataColumn[] supportedMetadataColumns() {
+        return new SupportedMetadataColumn[] {
+            new OpTsMetadataColumn(), new TimestampTypeMetadataColumn()
+        };
     }
 
     /**

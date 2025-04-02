@@ -20,7 +20,7 @@ limitations under the License.
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <artifactId>flink-cdc-connect</artifactId>
-        <groupId>com.ververica</groupId>
+        <groupId>org.apache.flink</groupId>
         <version>${revision}</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -32,18 +32,23 @@ limitations under the License.
         <module>flink-cdc-pipeline-connector-mysql</module>
         <module>flink-cdc-pipeline-connector-doris</module>
         <module>flink-cdc-pipeline-connector-starrocks</module>
+        <module>flink-cdc-pipeline-connector-kafka</module>
+        <module>flink-cdc-pipeline-connector-paimon</module>
+        <module>flink-cdc-pipeline-connector-elasticsearch</module>
+        <module>flink-cdc-pipeline-connector-oceanbase</module>
+        <module>flink-cdc-pipeline-connector-maxcompute</module>
     </modules>
 
     <dependencies>
         <dependency>
-            <groupId>com.ververica</groupId>
+            <groupId>org.apache.flink</groupId>
             <artifactId>flink-cdc-common</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>
         </dependency>
 
         <dependency>
-            <groupId>com.ververica</groupId>
+            <groupId>org.apache.flink</groupId>
             <artifactId>flink-cdc-runtime</artifactId>
             <version>${project.version}</version>
             <scope>provided</scope>

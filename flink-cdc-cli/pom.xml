@@ -19,8 +19,8 @@ limitations under the License.
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>flink-cdc-connectors</artifactId>
-        <groupId>com.ververica</groupId>
+        <artifactId>flink-cdc-parent</artifactId>
+        <groupId>org.apache.flink</groupId>
         <version>${revision}</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -28,18 +28,24 @@ limitations under the License.
     <artifactId>flink-cdc-cli</artifactId>
 
     <properties>
-        <commons-cli.version>1.6.0</commons-cli.version>
+        <commons-cli.version>1.7.0</commons-cli.version>
+        <snakeyaml.version>2.6</snakeyaml.version>
     </properties>
 
     <dependencies>
         <dependency>
-            <groupId>com.ververica</groupId>
+            <groupId>org.apache.flink</groupId>
             <artifactId>flink-cdc-common</artifactId>
             <version>${project.version}</version>
         </dependency>
-
+        <!-- YAML parser utilities -->
         <dependency>
-            <groupId>com.ververica</groupId>
+            <groupId>org.snakeyaml</groupId>
+            <artifactId>snakeyaml-engine</artifactId>
+            <version>${snakeyaml.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
             <artifactId>flink-cdc-composer</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -49,6 +55,21 @@ limitations under the License.
             <artifactId>commons-cli</artifactId>
             <version>${commons-cli.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-clients</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-yarn</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
     </dependencies>
 
 </project>

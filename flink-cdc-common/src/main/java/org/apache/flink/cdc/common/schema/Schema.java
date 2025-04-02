@@ -24,6 +24,7 @@ import org.apache.flink.cdc.common.types.DataTypeRoot;
 import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.common.utils.Preconditions;
+import org.apache.flink.cdc.common.utils.StringUtils;
 
 import javax.annotation.Nullable;
 
@@ -51,12 +52,20 @@ public class Schema implements Serializable {
 
     private final List<String> primaryKeys;
 
+    private final List<String> partitionKeys;
+
     private final Map<String, String> options;
 
     private final @Nullable String comment;
 
     // Used to index column by name
     private transient volatile Map<String, Column> nameToColumns;
+
+    /**
+     * Schema might be used as a LoadingCache key frequently, and maintaining a cache of hashCode
+     * would be more efficient.
+     */
+    private transient int cachedHashCode;
 
     private Schema(
             List<Column> columns,
@@ -65,6 +74,20 @@ public class Schema implements Serializable {
             @Nullable String comment) {
         this.columns = columns;
         this.primaryKeys = primaryKeys;
+        this.options = options;
+        this.comment = comment;
+        this.partitionKeys = new ArrayList<>();
+    }
+
+    private Schema(
+            List<Column> columns,
+            List<String> primaryKeys,
+            List<String> partitionKeys,
+            Map<String, String> options,
+            @Nullable String comment) {
+        this.columns = columns;
+        this.primaryKeys = primaryKeys;
+        this.partitionKeys = partitionKeys;
         this.options = options;
         this.comment = comment;
     }
@@ -94,6 +117,11 @@ public class Schema implements Serializable {
     /** Returns the primary keys of the table or data collection. */
     public List<String> primaryKeys() {
         return primaryKeys;
+    }
+
+    /** Returns the partition keys of the table or data collection. */
+    public List<String> partitionKeys() {
+        return partitionKeys;
     }
 
     /** Returns the options of the table or data collection. */
@@ -137,9 +165,14 @@ public class Schema implements Serializable {
         return DataTypes.ROW(fields).notNull();
     }
 
-    /** Returns a copy of the schema with a replaced list of {@Column}. */
+    /** Returns a copy of the schema with a replaced list of {@link Column}. */
     public Schema copy(List<Column> columns) {
-        return new Schema(columns, new ArrayList<>(primaryKeys), new HashMap<>(options), comment);
+        return new Schema(
+                columns,
+                new ArrayList<>(primaryKeys),
+                new ArrayList<>(partitionKeys),
+                new HashMap<>(options),
+                comment);
     }
 
     @Override
@@ -153,13 +186,17 @@ public class Schema implements Serializable {
         Schema schema = (Schema) o;
         return Objects.equals(columns, schema.columns)
                 && Objects.equals(primaryKeys, schema.primaryKeys)
+                && Objects.equals(partitionKeys, schema.partitionKeys)
                 && Objects.equals(options, schema.options)
                 && Objects.equals(comment, schema.comment);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(columns, primaryKeys, options, comment);
+        if (cachedHashCode == 0) {
+            cachedHashCode = Objects.hash(columns, primaryKeys, partitionKeys, options, comment);
+        }
+        return cachedHashCode;
     }
 
     // -----------------------------------------------------------------------------------
@@ -200,6 +237,12 @@ public class Schema implements Serializable {
         }
         sb.append("}");
         sb.append(", primaryKeys=").append(String.join(";", primaryKeys));
+        if (!partitionKeys.isEmpty()) {
+            sb.append(", partitionKeys=").append(String.join(";", partitionKeys));
+        }
+        if (!StringUtils.isNullOrWhitespaceOnly(comment)) {
+            sb.append(", comment=").append(comment);
+        }
         sb.append(", options=").append(describeOptions());
 
         return sb.toString();
@@ -213,6 +256,7 @@ public class Schema implements Serializable {
 
         private List<Column> columns;
         private List<String> primaryKeys;
+        private List<String> partitionKeys;
         private final Map<String, String> options;
         private @Nullable String comment;
 
@@ -221,9 +265,32 @@ public class Schema implements Serializable {
 
         public Builder() {
             this.primaryKeys = new ArrayList<>();
+            this.partitionKeys = new ArrayList<>();
             this.options = new HashMap<>();
             this.columns = new ArrayList<>();
             this.columnNames = new HashSet<>();
+        }
+
+        /**
+         * Declares a partition key constraint for a set of given columns. Partition key uniquely
+         * identify a row in a table. Neither of columns in a partition can be nullable.
+         *
+         * @param columnNames columns that form a unique primary key
+         */
+        public Builder partitionKey(String... columnNames) {
+            this.partitionKeys = Arrays.asList(columnNames);
+            return this;
+        }
+
+        /**
+         * Declares a partition key constraint for a set of given columns. Partition key uniquely
+         * identify a row in a table. Neither of columns in a partition can be nullable.
+         *
+         * @param columnNames columns that form a unique primary key
+         */
+        public Builder partitionKey(List<String> columnNames) {
+            this.partitionKeys = new ArrayList<>(columnNames);
+            return this;
         }
 
         /** Adopts all fields of the given row as physical columns of the schema. */
@@ -259,6 +326,21 @@ public class Schema implements Serializable {
         public Builder physicalColumn(String columnName, DataType type, String comment) {
             checkColumn(columnName, type);
             columns.add(Column.physicalColumn(columnName, type, comment));
+            return this;
+        }
+
+        /**
+         * Declares a physical column that is appended to this schema.
+         *
+         * @param columnName column name
+         * @param type data type of the column
+         * @param comment description of the column
+         * @param defaultValue default value of the column
+         */
+        public Builder physicalColumn(
+                String columnName, DataType type, String comment, String defaultValue) {
+            checkColumn(columnName, type);
+            columns.add(Column.physicalColumn(columnName, type, comment, defaultValue));
             return this;
         }
 
@@ -367,7 +449,7 @@ public class Schema implements Serializable {
 
         /** Returns an instance of a {@link Schema}. */
         public Schema build() {
-            return new Schema(columns, primaryKeys, options, comment);
+            return new Schema(columns, primaryKeys, partitionKeys, options, comment);
         }
     }
 }

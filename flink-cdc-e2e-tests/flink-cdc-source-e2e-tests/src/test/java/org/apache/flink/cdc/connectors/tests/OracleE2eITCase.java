@@ -17,28 +17,44 @@
 
 package org.apache.flink.cdc.connectors.tests;
 
+import org.apache.flink.cdc.common.test.utils.JdbcProxy;
+import org.apache.flink.cdc.common.test.utils.TestUtils;
+import org.apache.flink.cdc.connectors.oracle.source.OracleSourceITCase;
 import org.apache.flink.cdc.connectors.tests.utils.FlinkContainerTestEnvironment;
-import org.apache.flink.cdc.connectors.tests.utils.JdbcProxy;
-import org.apache.flink.cdc.connectors.tests.utils.TestUtils;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import io.debezium.relational.TableId;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.OracleContainer;
 import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.lifecycle.Startables;
 import org.testcontainers.utility.DockerImageName;
 
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase.CONNECTOR_PWD;
@@ -46,25 +62,40 @@ import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase
 import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase.ORACLE_DATABASE;
 import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase.TEST_PWD;
 import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase.TEST_USER;
+import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase.TOP_SECRET;
+import static org.apache.flink.cdc.connectors.oracle.source.OracleSourceTestBase.TOP_USER;
 
 /** End-to-end tests for oracle-cdc connector uber jar. */
-public class OracleE2eITCase extends FlinkContainerTestEnvironment {
+class OracleE2eITCase extends FlinkContainerTestEnvironment {
 
     private static final Logger LOG = LoggerFactory.getLogger(OracleE2eITCase.class);
+    protected static final Pattern COMMENT_PATTERN = Pattern.compile("^(.*)--.*$");
     private static final String ORACLE_DRIVER_CLASS = "oracle.jdbc.driver.OracleDriver";
     private static final String INTER_CONTAINER_ORACLE_ALIAS = "oracle";
     private static final Path oracleCdcJar = TestUtils.getResource("oracle-cdc-connector.jar");
     private static final Path mysqlDriverJar = TestUtils.getResource("mysql-driver.jar");
+    private static final Path oracleOjdbcJar = TestUtils.getResource("oracle-ojdbc.jar");
+    private static final Path oracleXdbJar = TestUtils.getResource("oracle-xdb.jar");
     public static final String ORACLE_IMAGE = "goodboy008/oracle-19.3.0-ee";
     private static OracleContainer oracle;
 
-    @Before
+    @BeforeEach
     public void before() {
         super.before();
         LOG.info("Starting containers...");
 
         oracle =
-                new OracleContainer(DockerImageName.parse(ORACLE_IMAGE).withTag("non-cdb"))
+                new OracleContainer(
+                                DockerImageName.parse(ORACLE_IMAGE)
+                                        .withTag(
+                                                DockerClientFactory.instance()
+                                                                .client()
+                                                                .versionCmd()
+                                                                .exec()
+                                                                .getArch()
+                                                                .equals("amd64")
+                                                        ? "non-cdb"
+                                                        : "arm-non-cdb"))
                         .withUsername(CONNECTOR_USER)
                         .withPassword(CONNECTOR_PWD)
                         .withDatabaseName(ORACLE_DATABASE)
@@ -74,10 +105,11 @@ public class OracleE2eITCase extends FlinkContainerTestEnvironment {
                         .withReuse(true);
 
         Startables.deepStart(Stream.of(oracle)).join();
+        initializeOracleTable("oracle_inventory");
         LOG.info("Containers are started.");
     }
 
-    @After
+    @AfterEach
     public void after() {
         if (oracle != null) {
             oracle.stop();
@@ -86,7 +118,7 @@ public class OracleE2eITCase extends FlinkContainerTestEnvironment {
     }
 
     @Test
-    public void testOracleCDC() throws Exception {
+    void testOracleCDC() throws Exception {
         List<String> sqlLines =
                 Arrays.asList(
                         "SET 'execution.checkpointing.interval' = '3s';",
@@ -100,8 +132,10 @@ public class OracleE2eITCase extends FlinkContainerTestEnvironment {
                         " 'connector' = 'oracle-cdc',",
                         " 'hostname' = '" + oracle.getNetworkAliases().get(0) + "',",
                         " 'port' = '" + oracle.getExposedPorts().get(0) + "',",
-                        " 'username' = '" + CONNECTOR_USER + "',",
-                        " 'password' = '" + CONNECTOR_PWD + "',",
+                        // To analyze table for approximate rowCnt computation, use admin user
+                        // before chunk splitting.
+                        " 'username' = '" + TOP_USER + "',",
+                        " 'password' = '" + TOP_SECRET + "',",
                         " 'database-name' = 'ORCLCDB',",
                         " 'schema-name' = 'DEBEZIUM',",
                         " 'scan.incremental.snapshot.enabled' = 'true',",
@@ -128,7 +162,7 @@ public class OracleE2eITCase extends FlinkContainerTestEnvironment {
                         "INSERT INTO products_sink",
                         "SELECT * FROM products_source;");
 
-        submitSQLJob(sqlLines, oracleCdcJar, jdbcJar, mysqlDriverJar);
+        submitSQLJob(sqlLines, oracleCdcJar, jdbcJar, mysqlDriverJar, oracleOjdbcJar, oracleXdbJar);
         waitUntilJobRunning(Duration.ofSeconds(30));
 
         // generate redo log
@@ -184,7 +218,76 @@ public class OracleE2eITCase extends FlinkContainerTestEnvironment {
                 300000L);
     }
 
-    private Connection getOracleJdbcConnection() throws SQLException {
+    private static Connection getOracleJdbcConnection() throws SQLException {
         return DriverManager.getConnection(oracle.getJdbcUrl(), TEST_USER, TEST_PWD);
+    }
+
+    private static void initializeOracleTable(String sqlFile) {
+        final String ddlFile = String.format("ddl/%s.sql", sqlFile);
+        final URL ddlTestFile = OracleSourceITCase.class.getClassLoader().getResource(ddlFile);
+        Assertions.assertThat(ddlTestFile).withFailMessage("Cannot locate " + ddlFile).isNotNull();
+        try (Connection connection = getOracleJdbcConnection();
+                Statement statement = connection.createStatement()) {
+            connection.setAutoCommit(true);
+            // region Drop all user tables in Debezium schema
+            listTables(connection)
+                    .forEach(
+                            tableId -> {
+                                try {
+                                    statement.execute(
+                                            "DROP TABLE "
+                                                    + String.join(
+                                                            ".",
+                                                            tableId.schema(),
+                                                            tableId.table()));
+                                } catch (SQLException e) {
+                                    LOG.warn("drop table error, table:{}", tableId, e);
+                                }
+                            });
+            // endregion
+
+            final List<String> statements =
+                    Arrays.stream(
+                                    Files.readAllLines(Paths.get(ddlTestFile.toURI())).stream()
+                                            .map(String::trim)
+                                            .filter(x -> !x.startsWith("--") && !x.isEmpty())
+                                            .map(
+                                                    x -> {
+                                                        final Matcher m =
+                                                                COMMENT_PATTERN.matcher(x);
+                                                        return m.matches() ? m.group(1) : x;
+                                                    })
+                                            .collect(Collectors.joining("\n"))
+                                            .split(";"))
+                            .collect(Collectors.toList());
+
+            for (String stmt : statements) {
+                statement.execute(stmt);
+            }
+        } catch (SQLException | IOException | URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // ------------------ utils -----------------------
+    protected static List<TableId> listTables(Connection connection) {
+
+        Set<TableId> tableIdSet = new HashSet<>();
+        String queryTablesSql =
+                "SELECT OWNER ,TABLE_NAME,TABLESPACE_NAME FROM ALL_TABLES \n"
+                        + "WHERE TABLESPACE_NAME IS NOT NULL AND TABLESPACE_NAME NOT IN ('SYSTEM','SYSAUX') "
+                        + "AND NESTED = 'NO' AND TABLE_NAME NOT IN (SELECT PARENT_TABLE_NAME FROM ALL_NESTED_TABLES)";
+        try {
+            ResultSet resultSet = connection.createStatement().executeQuery(queryTablesSql);
+            while (resultSet.next()) {
+                String schemaName = resultSet.getString(1);
+                String tableName = resultSet.getString(2);
+                TableId tableId = new TableId(ORACLE_DATABASE, schemaName, tableName);
+                tableIdSet.add(tableId);
+            }
+        } catch (SQLException e) {
+            LOG.warn(" SQL execute error, sql:{}", queryTablesSql, e);
+        }
+        return new ArrayList<>(tableIdSet);
     }
 }

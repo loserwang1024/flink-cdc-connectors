@@ -27,8 +27,8 @@ limitations under the License.
 
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.ververica</groupId>
-    <artifactId>flink-cdc-connectors</artifactId>
+    <groupId>org.apache.flink</groupId>
+    <artifactId>flink-cdc-parent</artifactId>
     <version>${revision}</version>
     <packaging>pom</packaging>
 
@@ -40,6 +40,8 @@ limitations under the License.
         <module>flink-cdc-connect</module>
         <module>flink-cdc-runtime</module>
         <module>flink-cdc-e2e-tests</module>
+        <module>flink-cdc-pipeline-udf-examples</module>
+        <module>flink-cdc-pipeline-model</module>
     </modules>
 
     <licenses>
@@ -50,31 +52,23 @@ limitations under the License.
         </license>
     </licenses>
 
-    <distributionManagement>
-        <snapshotRepository>
-            <id>oss</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
-        </snapshotRepository>
-        <repository>
-            <id>oss</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
-    </distributionManagement>
+    <scm>
+        <url>https://github.com/apache/flink-cdc</url>
+        <connection>git@github.com:apache/flink-cdc.git</connection>
+        <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/flink-cdc.git</developerConnection>
+    </scm>
 
     <properties>
-        <revision>3.0-SNAPSHOT</revision>
-        <java.version>1.8</java.version>
+        <revision>3.4-SNAPSHOT</revision>
         <scala.binary.version>2.12</scala.binary.version>
-        <maven.compiler.source>${java.version}</maven.compiler.source>
-        <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Enforce single fork execution due to heavy mini cluster use in the tests -->
         <flink.forkCount>1</flink.forkCount>
         <flink.reuseForks>true</flink.reuseForks>
 
         <!-- dependencies versions -->
-        <flink.version>1.18.0</flink.version>
-        <flink.major.version>1.18</flink.major.version>
+        <flink.version>1.20.1</flink.version>
+        <flink.major.version>1.20</flink.major.version>
         <flink.shaded.version>17.0</flink.shaded.version>
         <debezium.version>1.9.8.Final</debezium.version>
         <tikv.version>3.2.0</tikv.version>
@@ -85,30 +79,159 @@ limitations under the License.
         <slf4j.version>1.7.36</slf4j.version>
         <log4j.version>2.17.1</log4j.version>
         <spotless.version>2.4.2</spotless.version>
-        <oblogclient.version>1.1.0</oblogclient.version>
         <commons-lang3.version>3.12.0</commons-lang3.version>
         <json-path.version>2.7.0</json-path.version>
-        <junit5.version>5.10.1</junit5.version>
-        <junit4.version>4.13.2</junit4.version>
+        <jackson.version>2.13.2</jackson.version>
+        <junit.version>5.10.1</junit.version>
         <assertj.version>3.24.2</assertj.version>
         <markBundledAsOptional>true</markBundledAsOptional>
         <flatten-maven-plugin.version>1.5.0</flatten-maven-plugin.version>
+        <calcite.version>1.32.0</calcite.version>
+        <!-- Calcite 1.32.0 depends on 3.1.8,
+        at the same time minimum 3.1.x Janino version passing Flink tests without WAs is 3.1.10,
+        more details are in FLINK-27995 -->
+        <janino.version>3.1.10</janino.version>
+        <!-- This is for Scala UDF testing purposes only. -->
+        <scala.version>2.12.16</scala.version>
+        <!-- Maven shade plugin prior to 3.2.0 could not correctly shade nested classes with JDK 8+. -->
+        <maven.shade.plugin.version>3.6.0</maven.shade.plugin.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+
+            <dependency>
                 <groupId>org.junit</groupId>
                 <artifactId>junit-bom</artifactId>
-                <version>${junit5.version}</version>
+                <version>${junit.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
 
             <dependency>
-                <groupId>junit</groupId>
-                <artifactId>junit</artifactId>
-                <version>${junit4.version}</version>
+                <!-- Used for code generation -->
+                <groupId>org.codehaus.janino</groupId>
+                <artifactId>janino</artifactId>
+                <version>${janino.version}</version>
+            </dependency>
+
+            <dependency>
+                <!-- Used for translation of expression -->
+                <groupId>org.apache.calcite</groupId>
+                <artifactId>calcite-core</artifactId>
+                <!-- When updating the Calcite version, make sure to update the dependency exclusions -->
+                <version>${calcite.version}</version>
+                <exclusions>
+                    <!--
+                    "mvn dependency:tree" as of Calcite 1.32.0:
+                    [INFO] +- org.apache.calcite:calcite-core:jar:1.32.0:compile
+                    [INFO] |  +- org.apache.calcite:calcite-linq4j:jar:1.32.0:compile
+                    [INFO] |  +- org.locationtech.jts:jts-core:jar:1.19.0:compile
+                    [INFO] |  +- com.fasterxml.jackson.core:jackson-annotations:jar:2.14.3:compile
+                    [INFO] |  +- org.apache.calcite.avatica:avatica-core:jar:1.22.0:compile
+                    [INFO] |  +- org.apiguardian:apiguardian-api:jar:1.1.2:compile
+                    [INFO] |  +- com.fasterxml.jackson.core:jackson-core:jar:2.14.3:compile
+                    [INFO] |  +- com.fasterxml.jackson.core:jackson-databind:jar:2.14.3:compile
+                    [INFO] |  +- com.jayway.jsonpath:json-path:jar:2.7.0:runtime
+                    [INFO] |  |  \- net.minidev:json-smart:jar:2.4.7:runtime
+                    [INFO] |  |     \- net.minidev:accessors-smart:jar:2.4.7:runtime
+                    [INFO] |  |        \- org.ow2.asm:asm:jar:9.1:runtime
+                    [INFO] |  +- commons-codec:commons-codec:jar:1.15:runtime
+                    [INFO] |  \- commons-io:commons-io:jar:2.11.0:runtime
+                    Dependencies that are not needed for how we use Calcite right now.
+                    -->
+                    <exclusion>
+                        <groupId>org.apache.calcite.avatica</groupId>
+                        <artifactId>avatica-server</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.calcite.avatica</groupId>
+                        <artifactId>avatica-metrics</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.google.protobuf</groupId>
+                        <artifactId>protobuf-java</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.google.uzaygezen</groupId>
+                        <artifactId>uzaygezen-core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents</groupId>
+                        <artifactId>httpclient</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents</groupId>
+                        <artifactId>httpcore</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.commons</groupId>
+                        <artifactId>commons-dbcp2</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.commons</groupId>
+                        <artifactId>commons-lang3</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.fasterxml.jackson.dataformat</groupId>
+                        <artifactId>jackson-dataformat-yaml</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.yahoo.datasketches</groupId>
+                        <artifactId>sketches-core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>net.hydromatic</groupId>
+                        <artifactId>aggdesigner-algorithm</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.google.errorprone</groupId>
+                        <artifactId>error_prone_annotations</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.jetbrains</groupId>
+                        <artifactId>annotations</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.jetbrains.kotlin</groupId>
+                        <artifactId>kotlin-stdlib-jdk8</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.codehaus.janino</groupId>
+                        <artifactId>janino</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.codehaus.janino</groupId>
+                        <artifactId>commons-compiler</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents.client5</groupId>
+                        <artifactId>httpclient5</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents.core5</groupId>
+                        <artifactId>httpcore5</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.checkerframework</groupId>
+                        <artifactId>checker-qual</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.locationtech.jts.io</groupId>
+                        <artifactId>jts-io-common</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.locationtech.proj4j</groupId>
+                        <artifactId>proj4j</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -215,15 +338,16 @@ limitations under the License.
         </dependency>
 
         <dependency>
-            <groupId>org.junit.vintage</groupId>
-            <artifactId>junit-vintage-engine</artifactId>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
-            <groupId>org.assertj</groupId>
-            <artifactId>assertj-core</artifactId>
-            <version>${assertj.version}</version>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.15</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -298,6 +422,7 @@ limitations under the License.
                         <exclude>**/.*/**</exclude>
                         <!-- Generated content -->
                         <exclude>**/target/**</exclude>
+                        <exclude>**/*.log</exclude>
                         <!-- Build files -->
                         <exclude>**/*.iml</exclude>
                         <!-- Docs -->
@@ -314,6 +439,7 @@ limitations under the License.
                         <exclude>docs/site/**</exclude>
                         <!-- Tests -->
                         <exclude>**/*.txt</exclude>
+                        <exclude>tools/mig-test/**</exclude>
                         <exclude>
                             flink-cdc-connect/flink-cdc-source-connectors/flink-connector-mysql-cdc/src/test/resources/file/*.json
                         </exclude>
@@ -427,7 +553,7 @@ limitations under the License.
                         <forkNumber>0${surefire.forkNumber}</forkNumber>
                     </systemPropertyVariables>
                     <!-- Prevent ORA-01882: timezone region not found errors due to the Oracle DB
-                         does not understanding some time zone which used in Ubuntu OS -->
+                         does not understand some time zone which used in Ubuntu OS -->
                     <argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber}
                         -XX:+UseG1GC -Doracle.jdbc.timezoneAsRegion=false
                     </argLine>
@@ -437,6 +563,7 @@ limitations under the License.
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
+                <version>${maven.shade.plugin.version}</version>
                 <executions>
                     <execution>
                         <id>shade-flink</id>
@@ -500,19 +627,6 @@ limitations under the License.
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>test-jar</id>
-                        <goals>
-                            <goal>test-jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>2.9.1</version>
                 <configuration>
@@ -549,6 +663,15 @@ limitations under the License.
                         <phase>clean</phase>
                     </execution>
                 </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${maven.compiler.source}</source>
+                    <target>${maven.compiler.target}</target>
+                </configuration>
             </plugin>
         </plugins>
     </build>
@@ -604,108 +727,58 @@ limitations under the License.
             </build>
         </profile>
         <profile>
-            <id>release</id>
+            <!--
+              We're reusing the apache-release build profile defined in the Apache Parent POM,
+              with one exclusion: do not run the source-release-assembly execution goal.
+              We have our own scripts to create the source release, which correctly excludes
+              binaries from distribution tarball.
+              The script can be found under tools/releasing/create_source_release.sh.
+            -->
+            <id>apache-release</id>
             <build>
                 <plugins>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-gpg-plugin</artifactId>
-                        <version>1.6</version>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.apache.apache.resources</groupId>
+                                <artifactId>apache-source-release-assembly-descriptor</artifactId>
+                                <version>1.0.6</version>
+                            </dependency>
+                        </dependencies>
                         <executions>
                             <execution>
-                                <id>sign-artifacts</id>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-enforcer-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>enforce-java</id>
-                                <goals>
-                                    <goal>enforce</goal>
-                                </goals>
-                                <configuration>
-                                    <rules>
-                                        <requireJavaVersion>
-                                            <version>[1.8,)</version>
-                                        </requireJavaVersion>
-                                    </rules>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-source-plugin</artifactId>
-                        <version>2.2.1</version><!--$NO-MVN-MAN-VER$-->
-                        <executions>
-                            <execution>
-                                <id>attach-sources</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>net.ju-n.maven.plugins</groupId>
-                        <artifactId>checksum-maven-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>artifacts</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <algorithms>
-                                <algorithm>SHA-256</algorithm>
-                            </algorithms>
-                            <failOnError>false</failOnError>
-                        </configuration>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>2.9.1</version><!--$NO-MVN-MAN-VER$-->
-                        <configuration>
-                            <quiet>true</quiet>
-                            <detectOfflineLinks>false</detectOfflineLinks>
-                            <additionalJOptions combine.children="append">
-                                <additionalJOption>-Xdoclint:none</additionalJOption>
-                            </additionalJOptions>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <id>attach-javadocs</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
+                                <id>source-release-assembly</id>
+                                <!-- disable the execution -->
+                                <phase>none</phase>
                             </execution>
                         </executions>
                     </plugin>
                 </plugins>
-                <pluginManagement>
-                    <plugins>
-                        <plugin>
-                            <groupId>org.apache.maven.plugins</groupId>
-                            <artifactId>maven-release-plugin</artifactId>
-                            <version>2.1</version>
-                            <configuration>
-                                <mavenExecutorId>forked-path</mavenExecutorId>
-                                <useReleaseProfile>false</useReleaseProfile>
-                                <arguments>${arguments} -Psonatype-oss-release</arguments>
-                            </configuration>
-                        </plugin>
-                    </plugins>
-                </pluginManagement>
             </build>
+        </profile>
+        <profile>
+            <id>java-8-target</id>
+            <activation>
+                <jdk>[1.8,11)</jdk>
+            </activation>
+            <properties>
+                <java.version>1.8</java.version>
+                <maven.compiler.source>${java.version}</maven.compiler.source>
+                <maven.compiler.target>${java.version}</maven.compiler.target>
+            </properties>
+        </profile>
+        <profile>
+            <id>java-11-target</id>
+            <activation>
+                <jdk>[11,)</jdk>
+            </activation>
+            <properties>
+                <java.version>11</java.version>
+                <maven.compiler.source>${java.version}</maven.compiler.source>
+                <maven.compiler.target>${java.version}</maven.compiler.target>
+            </properties>
         </profile>
     </profiles>
 </project>

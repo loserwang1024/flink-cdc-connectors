@@ -17,7 +17,9 @@
 
 package org.apache.flink.cdc.connectors.db2.table;
 
-import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
+import org.apache.flink.cdc.connectors.base.options.JdbcSourceOptions;
+import org.apache.flink.cdc.connectors.base.options.SourceOptions;
+import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
@@ -28,15 +30,11 @@ import org.apache.flink.table.catalog.ResolvedCatalogTable;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.connector.source.DynamicTableSource;
-import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.factories.Factory;
 import org.apache.flink.table.factories.FactoryUtil;
-import org.apache.flink.table.runtime.connector.source.ScanRuntimeProviderContext;
-import org.apache.flink.util.ExceptionUtils;
 
-import org.junit.Test;
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -46,15 +44,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertProducedTypeOfSourceFunction;
 import static org.apache.flink.cdc.debezium.utils.ResolvedSchemaUtils.getPhysicalSchema;
 import static org.apache.flink.table.api.TableSchema.fromResolvedSchema;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /** Test for {@link Db2TableSource} created by {@link Db2TableSourceFactory}. */
-public class Db2TableSourceFactoryTest {
+class Db2TableSourceFactoryTest {
 
     private static final ResolvedSchema SCHEMA =
             new ResolvedSchema(
@@ -87,12 +81,11 @@ public class Db2TableSourceFactoryTest {
     private static final String MY_USERNAME = "flinkuser";
     private static final String MY_PASSWORD = "flinkpw";
     private static final String MY_DATABASE = "myDB";
-    private static final String MY_SCHEMA = "flinkuser";
-    private static final String MY_TABLE = "myTable";
+    private static final String MY_TABLE = "flinkuser.myTable";
     private static final Properties PROPERTIES = new Properties();
 
     @Test
-    public void testCommonProperties() {
+    void testCommonProperties() {
         Map<String, String> properties = getAllOptions();
 
         // validation for source
@@ -103,22 +96,38 @@ public class Db2TableSourceFactoryTest {
                         50000,
                         MY_LOCALHOST,
                         MY_DATABASE,
-                        MY_SCHEMA,
                         MY_TABLE,
                         MY_USERNAME,
                         MY_PASSWORD,
                         ZoneId.of("UTC"),
                         PROPERTIES,
-                        StartupOptions.initial());
-        assertEquals(expectedSource, actualSource);
+                        StartupOptions.initial(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        JdbcSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        JdbcSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        JdbcSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        JdbcSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
+                        null,
+                        false,
+                        JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED
+                                .defaultValue());
+        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
     @Test
-    public void testOptionalProperties() {
+    void testOptionalProperties() {
         Map<String, String> options = getAllOptions();
         options.put("port", "50000");
         options.put("server-time-zone", "Asia/Shanghai");
         options.put("debezium.snapshot.mode", "schema_only");
+        options.put("scan.incremental.snapshot.unbounded-chunk-first.enabled", "true");
 
         DynamicTableSource actualSource = createTableSource(options, SCHEMA);
         Properties dbzProperties = new Properties();
@@ -129,31 +138,40 @@ public class Db2TableSourceFactoryTest {
                         50000,
                         MY_LOCALHOST,
                         MY_DATABASE,
-                        MY_SCHEMA,
                         MY_TABLE,
                         MY_USERNAME,
                         MY_PASSWORD,
                         ZoneId.of("Asia/Shanghai"),
                         dbzProperties,
-                        StartupOptions.latest());
-        assertEquals(expectedSource, actualSource);
+                        StartupOptions.latest(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        JdbcSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        JdbcSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        JdbcSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        JdbcSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
+                        null,
+                        false,
+                        JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        true);
+        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
     @Test
-    public void testValidation() {
+    void testValidation() {
         // validate illegal port
-        try {
-            Map<String, String> properties = getAllOptions();
-            properties.put("port", "123b");
-
-            createTableSource(properties, SCHEMA);
-            fail("exception expected");
-        } catch (Throwable t) {
-            assertTrue(
-                    ExceptionUtils.findThrowableWithMessage(
-                                    t, "Could not parse value '123b' for key 'port'.")
-                            .isPresent());
-        }
+        Assertions.assertThatThrownBy(
+                        () -> {
+                            Map<String, String> properties = getAllOptions();
+                            properties.put("port", "123b");
+                            createTableSource(properties, SCHEMA);
+                        })
+                .hasStackTraceContaining("Could not parse value '123b' for key 'port'.");
 
         // validate missing required
         Factory factory = new Db2TableSourceFactory();
@@ -161,34 +179,24 @@ public class Db2TableSourceFactoryTest {
             Map<String, String> properties = getAllOptions();
             properties.remove(requiredOption.key());
 
-            try {
-                createTableSource(properties, SCHEMA);
-                fail("exception expected");
-            } catch (Throwable t) {
-                assertTrue(
-                        ExceptionUtils.findThrowableWithMessage(
-                                        t,
-                                        "Missing required options are:\n\n" + requiredOption.key())
-                                .isPresent());
-            }
+            Assertions.assertThatThrownBy(() -> createTableSource(properties, SCHEMA))
+                    .hasStackTraceContaining(
+                            "Missing required options are:\n\n" + requiredOption.key());
         }
 
         // validate unsupported option
-        try {
-            Map<String, String> properties = getAllOptions();
-            properties.put("unknown", "abc");
+        Assertions.assertThatThrownBy(
+                        () -> {
+                            Map<String, String> properties = getAllOptions();
+                            properties.put("unknown", "abc");
 
-            createTableSource(properties, SCHEMA);
-            fail("exception expected");
-        } catch (Throwable t) {
-            assertTrue(
-                    ExceptionUtils.findThrowableWithMessage(t, "Unsupported options:\n\nunknown")
-                            .isPresent());
-        }
+                            createTableSource(properties, SCHEMA);
+                        })
+                .hasStackTraceContaining("Unsupported options:\n\nunknown");
     }
 
     @Test
-    public void testMetadataColumns() {
+    void testMetadataColumns() {
         Map<String, String> properties = getAllOptions();
 
         // validation for source
@@ -204,25 +212,33 @@ public class Db2TableSourceFactoryTest {
                         50000,
                         MY_LOCALHOST,
                         MY_DATABASE,
-                        MY_SCHEMA,
                         MY_TABLE,
                         MY_USERNAME,
                         MY_PASSWORD,
                         ZoneId.of("UTC"),
                         new Properties(),
-                        StartupOptions.initial());
+                        StartupOptions.initial(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        JdbcSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        JdbcSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        JdbcSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        JdbcSourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
+                        null,
+                        false,
+                        JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        JdbcSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED
+                                .defaultValue());
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys =
                 Arrays.asList("op_ts", "database_name", "table_name", "schema_name");
 
-        assertEquals(expectedSource, actualSource);
-
-        ScanTableSource.ScanRuntimeProvider provider =
-                db2TableSource.getScanRuntimeProvider(ScanRuntimeProviderContext.INSTANCE);
-        DebeziumSourceFunction<RowData> debeziumSourceFunction =
-                (DebeziumSourceFunction<RowData>)
-                        ((SourceFunctionProvider) provider).createSourceFunction();
-        assertProducedTypeOfSourceFunction(debeziumSourceFunction, expectedSource.producedDataType);
+        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
     private Map<String, String> getAllOptions() {
@@ -230,7 +246,6 @@ public class Db2TableSourceFactoryTest {
         options.put("connector", "db2-cdc");
         options.put("hostname", MY_LOCALHOST);
         options.put("database-name", MY_DATABASE);
-        options.put("schema-name", MY_SCHEMA);
         options.put("table-name", MY_TABLE);
         options.put("username", MY_USERNAME);
         options.put("password", MY_PASSWORD);

@@ -1,9 +1,9 @@
 ---
-title: "FAQ"
+title: "Frequently Asked Questions"
 weight: 1
 type: docs
 aliases:
-- /faq/faq.html
+- /faq/faq
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -35,7 +35,7 @@ The dependency management of each connector in Flink CDC project is consistent w
 
 ### Q3: Why change the package name from com.alibaba.ververica changed to org.apache.flink?  Why can't the 2. X version be found in Maven warehouse?
 
-Flink CDC project changes the group ID from com.alibaba.ververica changed to org.apache.flink since 2.0.0 version, this is to make the project more community neutral and more convenient for developers of various companies to build. So look for 2.x in Maven warehouse package, the path is /org/apache/flink.
+Flink CDC project changes the group ID from com.alibaba.ververica changed to org.apache.flink since 2.0.0 version, this is to make the project more community neutral and more convenient for developers of various companies to build. So look for 2.x in Maven warehouse package, the path is /com/ververica, while the path of 3.1+ is /org/apache/flink.
 
 ## MySQL CDC FAQ
 
@@ -132,7 +132,8 @@ Flink CDC provides DataStream API `MysqlSource` since version 2.1. Users can con
 
 ### Q7: How to synchronize the whole MySQL database? Does Flink CDC support it?
 
-The DataStream API provided in Q6 has enabled users to obtain DDL change events and data change events. On this basis, users need to develop DataStream jobs according to their own business logic and downstream storage.
+1. The DataStream API provided in Q6 has enabled users to obtain DDL change events and data change events. On this basis, users need to develop DataStream jobs according to their own business logic and downstream storage.
+2. Flink CDC provides the pipeline to synchronize the whole MySQL database Since version 3.0.
 
 ### Q8: In the same MySQL instance, the table of one database cannot synchronize incremental data, but other databases works fine. Why?
 
@@ -206,8 +207,22 @@ The reason for this problem is that the reading of the full volume phase of the 
 
 ### Q15: How to config `tableList` option when build MySQL CDC source in DataStream API?
 
-The `tableList` option requires table name with database name rather than table name in DataStream API. For MySQL CDC source, the `tableList` option value should like ‘my_db.my_table’.
+1. The `tableList` option requires table name with database name rather than table name in DataStream API. For MySQL CDC source, the `tableList` option value should like ‘my_db.my_table’.
+2. If you need to synchronize the whole mydb database excluding the products and orders tables, the `tableList` option value should like 'my_db.(?!products｜orders).*'.
 
+### Q16: In MySQL source table, there is a TINYINT(1) column where some rows contain values greater than 1. However, downstreams receive this data as true/false in the pipeline job. Why does this happen?
+This is because the default value of the MySQL connection parameter `tinyInt1isBit` is true and the version of Flink CDC before 3.3.0 didn't convert it, which causes the TINYINT(1) data to be interpreted as boolean values. 
+To convert it to actual values, please upgrade your CDC version to 3.3.0+ then add the configuration `treat-tinyint1-as-boolean.enabled: false` at the source node.  
+For example:
+```yaml
+source:
+  type: mysql
+  ...
+  treat-tinyint1-as-boolean.enabled: false
+
+sink:
+  type: ...
+```
 ## Postgres CDC FAQ
 
 ### Q1: It is found that the disk utilization rate of PG server is high. What is the reason why wal is not released?
@@ -224,9 +239,9 @@ Please ensure that the replica identity is full first. The toast data is relativ
 
 ### Q4: The job reports an error replication slot "XXXX" is active. What should I do?
 
-Currently, Flink Postgres CDC does not release the slot manually after the job exits. There are two ways to solve this problem
+Currently, Flink Postgres CDC does not release the slot manually after the job exits. 
 
-- Go to Postgres and manually execute the following command
+Go to Postgres and manually execute the following command.
 
 ```
 select pg_drop_replication_slot('rep_slot');
@@ -234,7 +249,6 @@ select pg_drop_replication_slot('rep_slot');
 select pg_terminate_backend(162564); select pg_drop_replication_slot('rep_slot');
 ```
 
-- Add 'debezium.slot.drop.on.stop'='true' to PG source with parameter to automatically clean up the slot after the job stops
 
 ### Q5: Jobs have dirty data, such as illegal dates. Are there parameters that can be configured and filtered?
 
@@ -246,17 +260,19 @@ The `tableList` option requires table name with schema name rather than table na
 
 ## MongoDB CDC FAQ
 
-### Q1: Does mongodb CDC support full + incremental read and read-only incremental?
+### Q1: Does MongoDB CDC support full + incremental read and read-only incremental?
 
-Yes, the default is full + incremental reading; Use copy The existing = false parameter is set to read-only increment.
+Yes, the default is full + incremental reading; Using 'scan.startup.mode' = 'latest-offset' parameter can set to read-only incremental.
 
-### Q2: Does mongodb CDC support recovery from checkpoint? What is the principle?
+### Q2: Does MongoDB CDC support recovery from checkpoint? What is the principle?
 
-Yes, the checkpoint will record the resumetoken of the changestream. During recovery, the changestream can be restored through the resumetoken. Where resumetoken corresponds to oplog RS (mongodb change log collection), oplog RS is a fixed capacity collection. When the corresponding record of resumetoken is in oplog When RS does not exist, an exception of invalid resumetoken may occur. In this case, you can set the appropriate oplog Set size of RS to avoid oplog RS retention time is too short, you can refer to https://docs.mongodb.com/manual/tutorial/change-oplog-size/ In addition, the resumetoken can be refreshed through the newly arrived change record and heartbeat record.
+Yes, the checkpoint will record the resumeToken of the changeStream. During recovery, the changeStream can be restored through the resumeToken. Where resumeToken corresponds to `oplog.rs` (Change log collection in MongoDB), `oplog.rs` is a fixed capacity collection. When the corresponding record of resumeToken does not exist in `oplog.rs`, an Invalid resumeToken Exception may occur. In this case, you can set the appropriate size of `oplog.rs` to avoid retention time of `oplog.rs` is too short, you can refer to https://docs.mongodb.com/manual/tutorial/change-oplog-size/. In addition, the resumeToken can be refreshed through the newly arrived change record and heartbeat record.
 
-### Q3: Does mongodb CDC support outputting - U (update_before) messages?
+### Q3: Does MongoDB CDC support outputting - U (update_before) messages?
 
-Mongodb original oplog RS has only insert, update, replace and delete operation types. It does not retain the information before update. It cannot output - U messages. It can only realize the update semantics in Flink. When using mongodbtablesource, Flink planner will automatically perform changelognormalize optimization, fill in the missing - U messages, and output complete + I, - u, + U, and - D messages. The cost of changelognormalize optimization is that the node will save the status of all previous keys. Therefore, if the DataStream job directly uses mongodbsource, without the optimization of Flink planner, changelognormalize will not be performed automatically, so - U messages cannot be obtained directly. To obtain the pre update image value, you need to manage the status yourself. If you don't want to manage the status yourself, you can convert mongodbtablesource to changelogstream or retractstream and supplement the pre update image value with the optimization ability of Flink planner. An example is as follows:
+In MongoDB versions >= 6.0, if MongoDB enable [document preimages](https://www.mongodb.com/docs/atlas/app-services/mongodb/preimages/), setting 'scan.full-changelog' = 'true' in Flink SQL can make source output -U messages, so ChangelogNormalize operator can be removed.
+
+In MongoDB versions < 6.0, the original `oplog.rs` in MongoDB only has operation types including insert, update, replace and delete. It does not save the information before update, so it cannot output - U messages. It can only realize the UPSERT semantics in Flink. When using MongoDBTableSource, Flink planner will automatically perform ChangelogNormalize optimization, fill in the missing - U messages, and output complete + I, - U, + U, and - D messages. The cost of ChangelogNormalize optimization is that the operator will save the states of all previous keys. Therefore, if the DataStream job directly uses MongoDBSource, without the optimization of Flink planner, ChangelogNormalize will not be performed automatically, so - U messages cannot be obtained directly. To obtain the pre update image value, you need to manage the status yourself. If you don't want to manage the status yourself, you can convert MongodbTableSource to changelogstream or retractstream and supplement the pre update image value with the optimization ability of Flink planner. An example is as follows:
 
 ```
     tEnv.executeSql("CREATE TABLE orders ( ... ) WITH ( 'connector'='mongodb-cdc',... )");
@@ -271,37 +287,27 @@ Mongodb original oplog RS has only insert, update, replace and delete operation 
     env.execute();
 ```
 
+### Q4: Does MongoDB CDC support subscribing multiple collections?
 
+All collections in database can be subscribed. For example, if database is configured as ' mgdb' and collection is configured as an empty string, all collections under 'mgdb' database will be subscribed.
 
-### Q4: Does mongodb CDC support subscribing to multiple collections?
+It also supports subscribing collections using regular expressions. If the name of the collections to be monitored contains special characters used in regular expressions, then the collection parameter must be configured as a fully qualified namespace ("database-name.collection-name"), otherwise the changes to the corresponding collections cannot be captured.
 
-Only the collection of the whole database can be subscribed, but some collection filtering functions are not supported. For example, if the database is configured as' mgdb 'and the collection is an empty string, all collections under the' mgdb 'database will be subscribed.
+### Q5: Which versions of MongoDB are supported by MongoDB CDC?
 
-### Q5: Does mongodb CDC support setting multiple concurrent reads?
+MongoDB CDC is implemented based on the ChangeStream feature, which is a new feature introduced in MongoDB 3.6. Mongodb CDC theoretically supports versions >= 3.6. It is recommended to run on version >= 4.0. When executed on versions < 3.6, an error will occur: Unrecognized pipeline stage name: '$changeStream'.
 
-Not yet supported.
+### Q6: Which operational modes of MongoDB are supported by MongoDB CDC?
 
-### Q6: What versions of mongodb are supported by mongodb CDC?
+ChangeStream requires MongoDB to run in replica set or sharded cluster mode. For local test, a single-node replica set can be initialized with `rs.initiate()`. An error will occur in standalone mode: The $changeStream stage is only supported on replica sets.
 
-Mongodb CDC is implemented based on the changestream feature, which is a new feature launched by mongodb 3.6. Mongodb CDC theoretically supports versions above 3.6. It is recommended to run version > = 4.0. When executing versions lower than 3.6, an error will occur: unrecognized pipeline stage name: '$changestream'.
+### Q7: MongoDB CDC reports an error. The username and password are incorrect, but other components can connect normally with this username and password. What is the reason?
 
-### Q7: What is the operation mode of mongodb supported by mongodb CDC?
+If the user is not created in the default admin database, you need to add parameter 'connection.options' = 'authSource={{ database where the user is created }}'.
 
-Changestream requires mongodb to run in replica set or fragment mode. Local tests can use stand-alone replica set rs.initiate().
+### Q8: Does MongoDB CDC support debezium related parameters?
 
-Errors occur in standalone mode : The $changestage is only supported on replica sets.
-
-### Q8: Mongodb CDC reports an error. The user name and password are incorrect, but other components can connect normally with this user name and password. What is the reason?
-
-If the user is creating a DB that needs to be connected, add 'connection' to the with parameter Options' ='authsource = DB where the user is located '.
-
-### Q9: Does mongodb CDC support debezium related parameters?
-
-The mongodb CDC connector is not supported because it is independently developed in the Flink CDC project and does not rely on the debezium project.
-
-### Q10: In the mongodb CDC full reading phase, can I continue reading from the checkpoint after the job fails?
-
-In the full reading phase, mongodb CDC does not do checkpoint until the full reading phase is completed. If it fails in the full reading phase, mongodb CDC will read the stock data again.
+It is not supported, because MongoDB CDC connector is developed independently in the Flink CDC project and does not rely on the debezium project.
 
 ## Oracle CDC FAQ
 
@@ -325,6 +331,6 @@ If it is the DataStream API, add the configuration item of debezium 'database.ta
 
 Add configuration item  'database.connection.adpter' = 'xstream', please use the configuration item 'debezium.database.connection.adpter' = 'xstream' if you're using SQL API.
 
-### Q4: What are the database name and schema name of Oracle CDC
+### Q4: What are the database name and schema name of Oracle CDC?
 
 Database name is the name of the database example, that is, the SID of Oracle. Schema name is the schema corresponding to the table. Generally speaking, a user corresponds to a schema. The schema name of the user is equal to the user name and is used as the default schema of the user. Therefore, schema name is generally the user name for creating the table, but if a schema is specified when creating the table, the specified schema is schema name. For example, use create table AAAA If TestTable (XXXX) is successfully created, AAAA is schema name.

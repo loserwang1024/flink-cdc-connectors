@@ -55,7 +55,14 @@ public class DataTypeSerializer extends TypeSerializer<DataType> {
 
     private final EnumSerializer<DataTypeClass> enumSerializer =
             new EnumSerializer<>(DataTypeClass.class);
-    private final RowTypeSerializer rowTypeSerializer = RowTypeSerializer.INSTANCE;
+    private RowTypeSerializer rowTypeSerializer;
+
+    private RowTypeSerializer getRowTypeSerializer() {
+        if (rowTypeSerializer == null) {
+            rowTypeSerializer = RowTypeSerializer.INSTANCE;
+        }
+        return rowTypeSerializer;
+    }
 
     @Override
     public boolean isImmutableType() {
@@ -75,7 +82,7 @@ public class DataTypeSerializer extends TypeSerializer<DataType> {
     @Override
     public DataType copy(DataType from) {
         if (from instanceof RowType) {
-            return rowTypeSerializer.copy((RowType) from);
+            return getRowTypeSerializer().copy((RowType) from);
         }
         return from;
     }
@@ -94,7 +101,7 @@ public class DataTypeSerializer extends TypeSerializer<DataType> {
     public void serialize(DataType record, DataOutputView target) throws IOException {
         if (record instanceof RowType) {
             enumSerializer.serialize(DataTypeClass.ROW, target);
-            rowTypeSerializer.serialize((RowType) record, target);
+            getRowTypeSerializer().serialize((RowType) record, target);
         } else if (record instanceof BinaryType) {
             enumSerializer.serialize(DataTypeClass.BINARY, target);
             target.writeBoolean(record.isNullable());
@@ -178,12 +185,15 @@ public class DataTypeSerializer extends TypeSerializer<DataType> {
     public DataType deserialize(DataInputView source) throws IOException {
         DataTypeClass dataTypeClass = enumSerializer.deserialize(source);
         if (dataTypeClass == DataTypeClass.ROW) {
-            return rowTypeSerializer.deserialize(source);
+            return getRowTypeSerializer().deserialize(source);
         }
         boolean isNullable = source.readBoolean();
         switch (dataTypeClass) {
             case BINARY:
-                return new BinaryType(isNullable, source.readInt());
+                int binaryLength = source.readInt();
+                return binaryLength == 0
+                        ? BinaryType.ofEmptyLiteral()
+                        : new BinaryType(isNullable, binaryLength);
             case ARRAY:
                 return new ArrayType(isNullable, this.deserialize(source));
             case BOOLEAN:
@@ -197,7 +207,10 @@ public class DataTypeSerializer extends TypeSerializer<DataType> {
             case VARBINARY:
                 return new VarBinaryType(isNullable, source.readInt());
             case CHAR:
-                return new CharType(isNullable, source.readInt());
+                int charLength = source.readInt();
+                return charLength == 0
+                        ? CharType.ofEmptyLiteral()
+                        : new CharType(isNullable, charLength);
             case SMALLINT:
                 return new SmallIntType(isNullable);
             case TIMESTAMP:
@@ -249,12 +262,12 @@ public class DataTypeSerializer extends TypeSerializer<DataType> {
         }
         DataTypeSerializer that = (DataTypeSerializer) o;
         return Objects.equals(enumSerializer, that.enumSerializer)
-                && Objects.equals(rowTypeSerializer, that.rowTypeSerializer);
+                && Objects.equals(getRowTypeSerializer(), that.getRowTypeSerializer());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(enumSerializer, rowTypeSerializer);
+        return Objects.hash(enumSerializer, getRowTypeSerializer());
     }
 
     @Override

@@ -1,258 +1,150 @@
-# CDC Connectors for Apache Flink<sup>®</sup>
+<p align="center">
+  <a href="https://nightlies.apache.org/flink/flink-cdc-docs-stable/"><img src="docs/static/fig/flinkcdc-logo.png" alt="Flink CDC" style="width: 375px;"></a>
+</p>
+<p align="center">
+<a href="https://github.com/apache/flink-cdc/" target="_blank">
+    <img src="https://img.shields.io/github/stars/apache/flink-cdc?style=social&label=Star&maxAge=2592000" alt="Test">
+</a>
+<a href="https://github.com/apache/flink-cdc/releases" target="_blank">
+    <img src="https://img.shields.io/github/v/release/apache/flink-cdc?color=yellow" alt="Release">
+</a>
+<a href="https://github.com/apache/flink-cdc/actions/workflows/flink_cdc_ci.yml" target="_blank">
+    <img src="https://img.shields.io/github/actions/workflow/status/apache/flink-cdc/flink_cdc_ci.yml?branch=master" alt="Build">
+</a>
+<a href="https://github.com/apache/flink-cdc/actions/workflows/flink_cdc_ci_nightly.yml" target="_blank">
+    <img src="https://img.shields.io/github/actions/workflow/status/apache/flink-cdc/flink_cdc_ci_nightly.yml?branch=master&label=nightly" alt="Nightly Build">
+</a>
+<a href="https://github.com/apache/flink-cdc/tree/master/LICENSE" target="_blank">
+    <img src="https://img.shields.io/static/v1?label=license&message=Apache License 2.0&color=white" alt="License">
+</a>
+</p>
 
-CDC Connectors for Apache Flink<sup>®</sup> is a set of source connectors for Apache Flink<sup>®</sup>, ingesting changes from different databases using change data capture (CDC).
-CDC Connectors for Apache Flink<sup>®</sup> integrates Debezium as the engine to capture data changes. So it can fully leverage the ability of Debezium. See more about what is [Debezium](https://github.com/debezium/debezium).
 
-This README is meant as a brief walkthrough on the core features of CDC Connectors for Apache Flink<sup>®</sup>. For a fully detailed documentation, please see [Documentation](https://ververica.github.io/flink-cdc-connectors/master/).
+Flink CDC is a distributed data integration tool for real time data and batch data. Flink CDC brings the simplicity 
+and elegance of data integration via YAML to describe the data movement and transformation in a 
+[Data Pipeline](docs/content/docs/core-concept/data-pipeline.md).
 
-## Supported (Tested) Databases
 
-| Connector                                                                     | Database                                                                                                                                                                                                                                                                                                                                                                                               | Driver                    |
-|-------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|
-| [mongodb-cdc](docs/content/docs/connectors/cdc-connectors/mongodb-cdc.md)     | <li> [MongoDB](https://www.mongodb.com): 3.6, 4.x, 5.0, 6.0                                                                                                                                                                                                                                                                                                                                            | MongoDB Driver: 4.3.4     |
-| [mysql-cdc](docs/content/docs/connectors/cdc-connectors/mysql-cdc.md)         | <li> [MySQL](https://dev.mysql.com/doc): 5.6, 5.7, 8.0.x <li> [RDS MySQL](https://www.aliyun.com/product/rds/mysql): 5.6, 5.7, 8.0.x <li> [PolarDB MySQL](https://www.aliyun.com/product/polardb): 5.6, 5.7, 8.0.x <li> [Aurora MySQL](https://aws.amazon.com/cn/rds/aurora): 5.6, 5.7, 8.0.x <li> [MariaDB](https://mariadb.org): 10.x <li> [PolarDB X](https://github.com/ApsaraDB/galaxysql): 2.0.1 | JDBC Driver: 8.0.28       |
-| [oceanbase-cdc](docs/content/docs/connectors/cdc-connectors/oceanbase-cdc.md) | <li> [OceanBase CE](https://open.oceanbase.com): 3.1.x, 4.x <li> [OceanBase EE](https://www.oceanbase.com/product/oceanbase): 2.x, 3.x, 4.x                                                                                                                                                                                                                                                            | OceanBase Driver: 2.4.x   |
-| [oracle-cdc](docs/content/docs/connectors/cdc-connectors/oracle-cdc.md)       | <li> [Oracle](https://www.oracle.com/index.html): 11, 12, 19, 21                                                                                                                                                                                                                                                                                                                                       | Oracle Driver: 19.3.0.0   |
-| [postgres-cdc](docs/content/docs/connectors/cdc-connectors/postgres-cdc.md)   | <li> [PostgreSQL](https://www.postgresql.org): 9.6, 10, 11, 12, 13, 14                                                                                                                                                                                                                                                                                                                                 | JDBC Driver: 42.5.1       |
-| [sqlserver-cdc](docs/content/docs/connectors/cdc-connectors/sqlserver-cdc.md) | <li> [Sqlserver](https://www.microsoft.com/sql-server): 2012, 2014, 2016, 2017, 2019                                                                                                                                                                                                                                                                                                                   | JDBC Driver: 9.4.1.jre8   |
-| [tidb-cdc](docs/content/docs/connectors/cdc-connectors/tidb-cdc.md)           | <li> [TiDB](https://www.pingcap.com): 5.1.x, 5.2.x, 5.3.x, 5.4.x, 6.0.0                                                                                                                                                                                                                                                                                                                                | JDBC Driver: 8.0.27       |
-| [Db2-cdc](docs/content/docs/connectors/cdc-connectors/db2-cdc.md)             | <li> [Db2](https://www.ibm.com/products/db2): 11.5                                                                                                                                                                                                                                                                                                                                                     | Db2 Driver: 11.5.0.0      |
-| [Vitess-cdc](docs/content/docs/connectors/cdc-connectors/vitess-cdc.md)       | <li> [Vitess](https://vitess.io/): 8.0.x, 9.0.x                                                                                                                                                                                                                                                                                                                                                        | MySql JDBC Driver: 8.0.26 |
+The Flink CDC prioritizes efficient end-to-end data integration and offers enhanced functionalities such as 
+full database synchronization, sharding table synchronization, schema evolution and data transformation.
 
-## Features
+![Flink CDC framework design](docs/static/fig/architecture.png)
 
-1. Supports reading database snapshot and continues to read transaction logs with **exactly-once processing** even failures happen.
-2. CDC connectors for DataStream API, users can consume changes on multiple databases and tables in a single job without Debezium and Kafka deployed.
-3. CDC connectors for Table/SQL API, users can use SQL DDL to create a CDC source to monitor changes on a single table.
+### Quickstart Guide
 
-## Quick Start
+Flink CDC provides a CdcUp CLI utility to start a playground environment and run Flink CDC jobs.
+You will need to have a working Docker and Docker compose environment to use it.
 
-### Usage for CDC Streaming ELT Framework
-
-The example shows how to continuously synchronize data, including snapshot data and incremental data, from multiple business tables in MySQL database to Doris for creating the ODS layer.
-
-1. Download and extract the flink-cdc-3.0.tar file to a local directory.
-2. Download the required CDC Pipeline Connector JAR from Maven and place it in the lib directory.
-3. Configure the FLINK_HOME environment variable to load the Flink cluster configuration from the flink-conf.yaml file located in the $FLINK_HOME/conf directory.
-```bash
-export FLINK_HOME=/path/to/your/flink/home
-```
-4. Write Flink CDC task YAML.
-```yaml
-source:
-  type: mysql
-  host: localhost
-  port: 3306
-  username: admin
-  password: pass
-  tables: db0.commodity, db1.user_table_[0-9]+, [app|web]_order_\.*
-
-sink:
-  type: doris
-  fenodes: FE_IP:HTTP_PORT
-  username: admin
-  password: pass
-
-pipeline:
-  name: mysql-sync-doris
-  parallelism: 4
-```
-5. Submit the job to Flink cluster.
-```bash
-# Submit Pipeline
-$ ./bin/flink-cdc.sh mysql-to-doris.yaml
-Pipeline "mysql-sync-doris" is submitted with Job ID "DEADBEEF".
-```
-
-During the execution of the flink-cdc.sh script, the CDC task configuration is parsed and translated into a DataStream job, which is then submitted to the specified Flink cluster.
-
-### Usage for Source Connectors
-
-#### Usage for Table/SQL API
-
-We need several steps to setup a Flink cluster with the provided connector.
-
-1. Setup a Flink cluster with version 1.14+ and Java 8+ installed.
-2. Download the connector SQL jars from the [Download](https://github.com/ververica/flink-cdc-connectors/releases) page (or [build yourself](#building-from-source)).
-3. Put the downloaded jars under `FLINK_HOME/lib/`.
-4. Restart the Flink cluster.
-
-The example shows how to create a MySQL CDC source in [Flink SQL Client](https://nightlies.apache.org/flink/flink-docs-stable/docs/dev/table/sqlclient/) and execute queries on it.
+1. Run `git clone https://github.com/apache/flink-cdc.git --depth=1` to retrieve a copy of Flink CDC source code.
+2. Run `cd tools/cdcup/ && ./cdcup.sh init` to use the CdcUp tool to start a playground environment.
+3. Run `./cdcup.sh up` to boot-up docker containers, and wait for them to be ready.
+4. Run `./cdcup.sh mysql` to open a MySQL session, and create at least one table.
 
 ```sql
--- creates a mysql cdc table source
-CREATE TABLE mysql_binlog (
- id INT NOT NULL,
- name STRING,
- description STRING,
- weight DECIMAL(10,3)
-) WITH (
- 'connector' = 'mysql-cdc',
- 'hostname' = 'localhost',
- 'port' = '3306',
- 'username' = 'flinkuser',
- 'password' = 'flinkpw',
- 'database-name' = 'inventory',
- 'table-name' = 'products'
-);
+-- initialize db and table
+CREATE DATABASE cdc_playground;
+USE cdc_playground;
+CREATE TABLE test_table (id INT PRIMARY KEY, name VARCHAR(32));
 
--- read snapshot and binlog data from mysql, and do some transformation, and show on the client
-SELECT id, UPPER(name), description, weight FROM mysql_binlog;
+-- insert test data
+INSERT INTO test_table VALUES (1, 'alice'), (2, 'bob'), (3, 'cicada'), (4, 'derrida');
+
+-- verify if it has been successfully inserted
+SELECT * FROM test_table;
 ```
 
-#### Usage for DataStream API
+5. Run `./cdcup.sh pipeline pipeline-definition.yaml` to submit the pipeline job. You may also edit the pipeline definition file for further configurations.
+6. Run `./cdcup.sh flink` to access the Flink Web UI.
 
-Include following Maven dependency (available through Maven Central):
+### Getting Started
 
-```
-<dependency>
-  <groupId>org.apache.flink</groupId>
-  <!-- add the dependency matching your database -->
-  <artifactId>flink-connector-mysql-cdc</artifactId>
-  <!-- The dependency is available only for stable releases, SNAPSHOT dependencies need to be built based on master or release branches by yourself. -->
-  <version>2.5-SNAPSHOT</version>
-</dependency>
-```
+1. Prepare a [Apache Flink](https://nightlies.apache.org/flink/flink-docs-master/docs/try-flink/local_installation/#starting-and-stopping-a-local-cluster) cluster and set up `FLINK_HOME` environment variable.
+2. [Download](https://github.com/apache/flink-cdc/releases) Flink CDC tar, unzip it and put jars of pipeline connector to Flink `lib` directory.
 
-```java
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.cdc.debezium.JsonDebeziumDeserializationSchema;
-import org.apache.flink.cdc.connectors.mysql.source.MySqlSource;
+> If you're using macOS or Linux, you may use `brew install apache-flink-cdc` to install Flink CDC and compatible connectors quickly.
 
-public class MySqlSourceExample {
-  public static void main(String[] args) throws Exception {
-    MySqlSource<String> mySqlSource = MySqlSource.<String>builder()
-            .hostname("yourHostname")
-            .port(yourPort)
-            .databaseList("yourDatabaseName") // set captured database
-            .tableList("yourDatabaseName.yourTableName") // set captured table
-            .username("yourUsername")
-            .password("yourPassword")
-            .deserializer(new JsonDebeziumDeserializationSchema()) // converts SourceRecord to JSON String
-            .build();
+3. Create a **YAML** file to describe the data source and data sink, the following example synchronizes all tables under MySQL app_db database to Doris :
+  ```yaml
+   source:
+     type: mysql
+     hostname: localhost
+     port: 3306
+     username: root
+     password: 123456
+     tables: app_db.\.*
 
-    StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+   sink:
+     type: doris
+     fenodes: 127.0.0.1:8030
+     username: root
+     password: ""
 
-    // enable checkpoint
-    env.enableCheckpointing(3000);
+   transform:
+     - source-table: adb.web_order01
+       projection: \*, format('%S', product_name) as product_name
+       filter: addone(id) > 10 AND order_id > 100
+       description: project fields and filter
+     - source-table: adb.web_order02
+       projection: \*, format('%S', product_name) as product_name
+       filter: addone(id) > 20 AND order_id > 200
+       description: project fields and filter
 
-    env
-      .fromSource(mySqlSource, WatermarkStrategy.noWatermarks(), "MySQL Source")
-      // set 4 parallel source tasks
-      .setParallelism(4)
-      .print().setParallelism(1); // use parallelism 1 for sink to keep message ordering
+   route:
+     - source-table: app_db.orders
+       sink-table: ods_db.ods_orders
+     - source-table: app_db.shipments
+       sink-table: ods_db.ods_shipments
+     - source-table: app_db.products
+       sink-table: ods_db.ods_products
 
-    env.execute("Print MySQL Snapshot + Binlog");
-  }
-}
-```
+   pipeline:
+     name: Sync MySQL Database to Doris
+     parallelism: 2
+     user-defined-function:
+       - name: addone
+         classpath: com.example.functions.AddOneFunctionClass
+       - name: format
+         classpath: com.example.functions.FormatFunctionClass
+  ```
+4. Submit pipeline job using `flink-cdc.sh` script.
+ ```shell
+  bash bin/flink-cdc.sh /path/mysql-to-doris.yaml
+ ```
+5. View job execution status through Flink WebUI or downstream database.
 
-## Building from source
+Try it out yourself with our more detailed [tutorial](docs/content/docs/get-started/quickstart/mysql-to-doris.md). 
+You can also see [connector overview](docs/content/docs/connectors/pipeline-connectors/overview.md) to view a comprehensive catalog of the
+connectors currently provided and understand more detailed configurations.
 
-- Prerequisites:
-    - git
-    - Maven
-    - At least Java 8
+### Join the Community
 
-```
-git clone https://github.com/ververica/flink-cdc-connectors.git
-cd flink-cdc-connectors
-mvn clean install -DskipTests
-```
+There are many ways to participate in the Apache Flink CDC community. The
+[mailing lists](https://flink.apache.org/what-is-flink/community/#mailing-lists) are the primary place where all Flink
+committers are present. For user support and questions use the user mailing list. If you've found a problem of Flink CDC,
+please create a [Flink jira](https://issues.apache.org/jira/projects/FLINK/summary) and tag it with the `Flink CDC` tag.   
+Bugs and feature requests can either be discussed on the dev mailing list or on Jira.
 
-The dependencies are now available in your local `.m2` repository.
 
-## License
 
-The code in this repository is licensed under the [Apache Software License 2](https://github.com/ververica/flink-cdc-connectors/blob/master/LICENSE).
+### Contributing
 
-## Contributing
+Welcome to contribute to Flink CDC, please see our [Developer Guide](docs/content/docs/developer-guide/contribute-to-flink-cdc.md)
+and [APIs Guide](docs/content/docs/developer-guide/understand-flink-cdc-api.md).
 
-CDC Connectors for Apache Flink<sup>®</sup> welcomes anyone that wants to help out in any way, whether that includes reporting problems, helping with documentation, or contributing code changes to fix bugs, add tests, or implement new features. You can report problems to request features in the [GitHub Issues](https://github.com/ververica/flink-cdc-connectors/issues).
 
-### Code Contribute
 
-1. Left comment under the issue that you want to take
-2. Fork Flink CDC project to your GitHub repositories
-3. Clone and compile your Flink CDC project
-```bash
-git clone https://github.com/your_name/flink-cdc-connectors.git
-cd flink-cdc-connectors
-mvn clean install -DskipTests
-```
-4. Check to a new branch and start your work
-```bash
-git checkout -b my_feature
--- develop and commit
-```
-5. Push your branch to your github
-```bash
-git push origin my_feature
-```
-6. Open a PR to https://github.com/ververica/flink-cdc-connectors
+### License
 
-### Code Style
+[Apache 2.0 License](LICENSE).
 
-#### Code Formatting
 
-You need to install the google-java-format plugin. Spotless together with google-java-format is used to format the codes.
 
-It is recommended to automatically format your code by applying the following settings:
+### Special Thanks
 
-1. Go to "Settings" → "Other Settings" → "google-java-format Settings".
-2. Tick the checkbox to enable the plugin.
-3. Change the code style to "Android Open Source Project (AOSP) style".
-4. Go to "Settings" → "Tools" → "Actions on Save".
-5. Under "Formatting Actions", select "Optimize imports" and "Reformat file".
-6. From the "All file types list" next to "Reformat code", select "Java".
+The Flink CDC community welcomes everyone who is willing to contribute, whether it's through submitting bug reports,
+enhancing the documentation, or submitting code contributions for bug fixes, test additions, or new feature development.     
+Thanks to all contributors for their enthusiastic contributions.
 
-For earlier IntelliJ IDEA versions, the step 4 to 7 will be changed as follows.
-
-- 4.Go to "Settings" → "Other Settings" → "Save Actions".
-- 5.Under "General", enable your preferred settings for when to format the code, e.g. "Activate save actions on save".
-- 6.Under "Formatting Actions", select "Optimize imports" and "Reformat file".
-- 7.Under "File Path Inclusions", add an entry for `.*\.java` to avoid formatting other file types.
-Then the whole project could be formatted by command `mvn spotless:apply`.
-
-#### Checkstyle
-
-Checkstyle is used to enforce static coding guidelines.
-
-1. Go to "Settings" → "Tools" → "Checkstyle".
-2. Set "Scan Scope" to "Only Java sources (including tests)".
-3. For "Checkstyle Version" select "8.14".
-4. Under "Configuration File" click the "+" icon to add a new configuration.
-5. Set "Description" to "Flink cdc".
-6. Select "Use a local Checkstyle file" and link it to the file `tools/maven/checkstyle.xml` which is located within your cloned repository.
-7. Select "Store relative to project location" and click "Next".
-8. Configure the property `checkstyle.suppressions.file` with the value `suppressions.xml` and click "Next".
-9. Click "Finish".
-10. Select "Flink cdc" as the only active configuration file and click "Apply".
-
-You can now import the Checkstyle configuration for the Java code formatter.
-
-1. Go to "Settings" → "Editor" → "Code Style" → "Java".
-2. Click the gear icon next to "Scheme" and select "Import Scheme" → "Checkstyle Configuration".
-3. Navigate to and select `tools/maven/checkstyle.xml` located within your cloned repository.
-
-Then you could click "View" → "Tool Windows" → "Checkstyle" and find the "Check Module" button in the opened tool window to validate checkstyle. Or you can use the command `mvn clean compile checkstyle:checkstyle` to validate.
-
-### Documentation Contribute
-
-Flink cdc documentations locates at `docs/content`.
-
-The contribution step is the same as the code contribution. We use markdown as the source code of the document.
-
-## Community
-
-* [DingTalk](https://www.dingtalk.com/) Chinese User Group
-
-  You can search the group number [**33121212**] or scan the following QR code to join in the group.
-  
-  <div align=center>
-     <img src="https://user-images.githubusercontent.com/5163645/233297896-0195d0ae-eb1c-4604-977b-1d08e424c7e7.png" width=400 />
-   </div>
-
-## Documents
-To get started, please see https://ververica.github.io/flink-cdc-connectors/
+<a href="https://github.com/apache/flink-cdc/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=apache/flink-cdc"/>
+</a>

@@ -21,6 +21,7 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.postgres.PostgresTestBase;
 import org.apache.flink.cdc.connectors.postgres.testutils.PostgresTestUtils;
 import org.apache.flink.cdc.connectors.postgres.testutils.UniqueDatabase;
+import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
@@ -36,14 +37,14 @@ import org.apache.flink.util.ExceptionUtils;
 
 import io.debezium.connector.postgresql.connection.PostgresConnection;
 import io.debezium.jdbc.JdbcConnection;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import org.junit.rules.Timeout;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,22 +64,25 @@ import static java.lang.String.format;
  * IT tests to cover various newly added tables during capture process. Ignore this test because
  * this test will pass until close
  */
-public class NewlyAddedTableITCase extends PostgresTestBase {
-    @Rule public final Timeout timeoutPerTest = Timeout.seconds(300);
+@Timeout(value = 300, unit = TimeUnit.SECONDS)
+class NewlyAddedTableITCase extends PostgresTestBase {
 
     private static final String DB_NAME_PREFIX = "postgres";
     private static final String SCHEMA_NAME = "customer";
     protected static final int DEFAULT_PARALLELISM = 4;
 
-    @Rule
-    public final MiniClusterWithClientResource miniClusterResource =
-            new MiniClusterWithClientResource(
-                    new MiniClusterResourceConfiguration.Builder()
-                            .setNumberTaskManagers(1)
-                            .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
-                            .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
-                            .withHaLeadershipControl()
-                            .build());
+    @TempDir private Path tempDir;
+
+    @RegisterExtension
+    public final ExternalResourceProxy<MiniClusterWithClientResource> miniClusterResource =
+            new ExternalResourceProxy<>(
+                    new MiniClusterWithClientResource(
+                            new MiniClusterResourceConfiguration.Builder()
+                                    .setNumberTaskManagers(1)
+                                    .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
+                                    .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
+                                    .withHaLeadershipControl()
+                                    .build()));
 
     private final UniqueDatabase customDatabase =
             new UniqueDatabase(
@@ -91,7 +95,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     private String slotName;
     private final ScheduledExecutorService mockWalLogExecutor = Executors.newScheduledThreadPool(1);
 
-    @Before
+    @BeforeEach
     public void before() throws SQLException {
         TestValuesTableFactory.clearAllData();
         customDatabase.createAndInitialize();
@@ -124,7 +128,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
         this.slotName = getSlotName();
     }
 
-    @After
+    @AfterEach
     public void after() throws Exception {
         mockWalLogExecutor.shutdown();
         // sleep 1000ms to wait until connections are closed.
@@ -143,7 +147,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineOnce() throws Exception {
+    void testNewlyAddedTableForExistsPipelineOnce() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.NONE,
@@ -154,7 +158,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineOnceWithAheadWalLog() throws Exception {
+    void testNewlyAddedTableForExistsPipelineOnceWithAheadWalLog() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.NONE,
@@ -165,7 +169,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineTwice() throws Exception {
+    void testNewlyAddedTableForExistsPipelineTwice() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.NONE,
@@ -177,7 +181,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineTwiceWithAheadWalLog() throws Exception {
+    void testNewlyAddedTableForExistsPipelineTwiceWithAheadWalLog() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.NONE,
@@ -189,7 +193,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineTwiceWithAheadWalLogAndAutoCloseReader()
+    void testNewlyAddedTableForExistsPipelineTwiceWithAheadWalLogAndAutoCloseReader()
             throws Exception {
         Map<String, String> otherOptions = new HashMap<>();
         otherOptions.put("scan.incremental.close-idle-reader.enabled", "true");
@@ -205,7 +209,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineThrice() throws Exception {
+    void testNewlyAddedTableForExistsPipelineThrice() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.NONE,
@@ -218,7 +222,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineThriceWithAheadWalLog() throws Exception {
+    void testNewlyAddedTableForExistsPipelineThriceWithAheadWalLog() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.NONE,
@@ -231,7 +235,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineSingleParallelism() throws Exception {
+    void testNewlyAddedTableForExistsPipelineSingleParallelism() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.NONE,
@@ -242,8 +246,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testNewlyAddedTableForExistsPipelineSingleParallelismWithAheadWalLog()
-            throws Exception {
+    void testNewlyAddedTableForExistsPipelineSingleParallelismWithAheadWalLog() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.NONE,
@@ -254,7 +257,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForNewlyAddedTable() throws Exception {
+    void testJobManagerFailoverForNewlyAddedTable() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.JM,
@@ -265,7 +268,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForNewlyAddedTableWithAheadWalLog() throws Exception {
+    void testJobManagerFailoverForNewlyAddedTableWithAheadWalLog() throws Exception {
         testNewlyAddedTableOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.JM,
@@ -276,7 +279,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForNewlyAddedTable() throws Exception {
+    void testTaskManagerFailoverForNewlyAddedTable() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.TM,
@@ -287,7 +290,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForNewlyAddedTableWithAheadWalLog() throws Exception {
+    void testTaskManagerFailoverForNewlyAddedTableWithAheadWalLog() throws Exception {
         testNewlyAddedTableOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.TM,
@@ -298,7 +301,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForRemoveTableSingleParallelism() throws Exception {
+    void testJobManagerFailoverForRemoveTableSingleParallelism() throws Exception {
         testRemoveTablesOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.JM,
@@ -309,7 +312,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testJobManagerFailoverForRemoveTable() throws Exception {
+    void testJobManagerFailoverForRemoveTable() throws Exception {
         testRemoveTablesOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.JM,
@@ -320,7 +323,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForRemoveTableSingleParallelism() throws Exception {
+    void testTaskManagerFailoverForRemoveTableSingleParallelism() throws Exception {
         testRemoveTablesOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.TM,
@@ -331,7 +334,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testTaskManagerFailoverForRemoveTable() throws Exception {
+    void testTaskManagerFailoverForRemoveTable() throws Exception {
         testRemoveTablesOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.TM,
@@ -342,7 +345,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testRemoveTableSingleParallelism() throws Exception {
+    void testRemoveTableSingleParallelism() throws Exception {
         testRemoveTablesOneByOne(
                 1,
                 PostgresTestUtils.FailoverType.NONE,
@@ -353,7 +356,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testRemoveTable() throws Exception {
+    void testRemoveTable() throws Exception {
         testRemoveTablesOneByOne(
                 DEFAULT_PARALLELISM,
                 PostgresTestUtils.FailoverType.NONE,
@@ -364,7 +367,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
     }
 
     @Test
-    public void testRemoveAndAddTablesOneByOne() throws Exception {
+    void testRemoveAndAddTablesOneByOne() throws Exception {
         testRemoveAndAddTablesOneByOne(
                 1, "address_hangzhou", "address_beijing", "address_shanghai");
     }
@@ -376,9 +379,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
         // step 1: create postgresql tables with all tables included
         initialAddressTables(connection, captureAddressTables);
 
-        final TemporaryFolder temporaryFolder = new TemporaryFolder();
-        temporaryFolder.create();
-        final String savepointDirectory = temporaryFolder.newFolder().toURI().toString();
+        final String savepointDirectory = tempDir.toString();
 
         // get all expected data
         List<String> fetchedDataList = new ArrayList<>();
@@ -423,7 +424,8 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     captureTableThisRound, cityName, cityName)));
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
             // step 2: make wal log data for all tables before this round(also includes this round),
             // test whether only this round table's data is captured.
@@ -450,7 +452,8 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
             // step 3: assert fetched wal log data in this round
             waitForSinkSize("sink", fetchedDataList.size());
 
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
             // step 4: trigger savepoint
             finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
             jobClient.cancel().get();
@@ -467,9 +470,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
         // step 1: create postgresql tables with all tables included
         initialAddressTables(getConnection(), captureAddressTables);
 
-        final TemporaryFolder temporaryFolder = new TemporaryFolder();
-        temporaryFolder.create();
-        final String savepointDirectory = temporaryFolder.newFolder().toURI().toString();
+        final String savepointDirectory = tempDir.toString();
 
         // get all expected data
         List<String> fetchedDataList = new ArrayList<>();
@@ -518,11 +519,12 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
                 PostgresTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
             finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
             jobClient.cancel().get();
         }
@@ -557,7 +559,8 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
             JobClient jobClient = tableResult.getJobClient().get();
 
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
             // step 3: make wal log data for all tables
             List<String> expectedWalLogDataThisRound = new ArrayList<>();
@@ -591,19 +594,20 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
             }
 
             if (failoverPhase == PostgresTestUtils.FailoverPhase.STREAM
-                    && TestValuesTableFactory.getRawResults("sink").size()
+                    && TestValuesTableFactory.getRawResultsAsStrings("sink").size()
                             > fetchedDataList.size()) {
                 PostgresTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
 
             fetchedDataList.addAll(expectedWalLogDataThisRound);
             // step 4: assert fetched wal log data in this round
             waitForSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getRawResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
             // step 5: trigger savepoint
             finishedSavePointPath = triggerSavepointWithRetry(jobClient, savepointDirectory);
@@ -639,9 +643,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
         // step 1: create postgres tables with initial data
         initialAddressTables(getConnection(), captureAddressTables);
 
-        final TemporaryFolder temporaryFolder = new TemporaryFolder();
-        temporaryFolder.create();
-        final String savepointDirectory = temporaryFolder.newFolder().toURI().toString();
+        final String savepointDirectory = tempDir.toString();
 
         // test newly added table one by one
         String finishedSavePointPath = null;
@@ -712,12 +714,13 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
                 PostgresTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             fetchedDataList.addAll(expectedSnapshotDataThisRound);
             PostgresTestUtils.waitForUpsertSinkSize("sink", fetchedDataList.size());
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
 
             // step 3: make some wal log data for this round
             makeFirstPartWalLogForAddressTable(getConnection(), newlyAddedTable);
@@ -725,7 +728,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
                 PostgresTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
-                        miniClusterResource.getMiniCluster(),
+                        miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             makeSecondPartWalLogForAddressTable(getConnection(), newlyAddedTable);
@@ -758,7 +761,8 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
             // the result size of sink may arrive fetchedDataList.size() with old data, wait one
             // checkpoint to wait retract old record and send new record
             Thread.sleep(1000);
-            assertEqualsInAnyOrder(fetchedDataList, TestValuesTableFactory.getResults("sink"));
+            assertEqualsInAnyOrder(
+                    fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
 
             // step 6: trigger savepoint
             if (round != captureAddressTables.length - 1) {
@@ -904,19 +908,12 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
 
     private StreamExecutionEnvironment getStreamExecutionEnvironmentFromSavePoint(
             String finishedSavePointPath, int parallelism) throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        Configuration configuration = new Configuration();
         if (finishedSavePointPath != null) {
-            // restore from savepoint
-            // hack for test to visit protected TestStreamEnvironment#getConfiguration() method
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-            Class<?> clazz =
-                    classLoader.loadClass(
-                            "org.apache.flink.streaming.api.environment.StreamExecutionEnvironment");
-            Field field = clazz.getDeclaredField("configuration");
-            field.setAccessible(true);
-            Configuration configuration = (Configuration) field.get(env);
             configuration.setString(SavepointConfigOptions.SAVEPOINT_PATH, finishedSavePointPath);
         }
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(configuration);
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
         env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, 100L));
@@ -945,6 +942,7 @@ public class NewlyAddedTableITCase extends PostgresTestBase {
                         + " 'table-name' = '%s',"
                         + " 'slot.name' = '%s', "
                         + " 'scan.incremental.snapshot.chunk.size' = '2',"
+                        + " 'chunk-meta.group.size' = '2',"
                         + " 'scan.newly-added-table.enabled' = 'true'"
                         + " %s"
                         + ")",

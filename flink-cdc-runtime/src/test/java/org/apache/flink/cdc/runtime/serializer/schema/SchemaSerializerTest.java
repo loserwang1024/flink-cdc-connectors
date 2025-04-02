@@ -25,7 +25,7 @@ import org.apache.flink.cdc.runtime.serializer.SerializerTestBase;
 import java.util.Collections;
 
 /** A test for the {@link SchemaSerializer}. */
-public class SchemaSerializerTest extends SerializerTestBase<Schema> {
+class SchemaSerializerTest extends SerializerTestBase<Schema> {
     @Override
     protected TypeSerializer<Schema> createSerializer() {
         return SchemaSerializer.INSTANCE;
@@ -53,6 +53,7 @@ public class SchemaSerializerTest extends SerializerTestBase<Schema> {
                     .metadataColumn("m3", DataTypes.TIMESTAMP_LTZ(), "mKey", "comment")
                     .option("option", "fake")
                     .primaryKey(Collections.singletonList("col1"))
+                    .partitionKey(Collections.singletonList("m2"))
                     .build(),
             Schema.newBuilder()
                     .physicalColumn("col1", DataTypes.BIGINT())
