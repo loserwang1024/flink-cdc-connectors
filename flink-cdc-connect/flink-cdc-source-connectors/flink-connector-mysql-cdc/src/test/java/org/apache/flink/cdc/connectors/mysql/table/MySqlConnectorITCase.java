@@ -65,7 +65,7 @@ import java.util.stream.Stream;
 import static org.apache.flink.api.common.JobStatus.RUNNING;
 import static org.apache.flink.cdc.connectors.mysql.LegacyMySqlSourceTest.currentMySqlLatestOffset;
 import static org.apache.flink.cdc.connectors.mysql.MySqlTestUtils.waitForJobStatus;
-import static org.assertj.core.api.Assumptions.assumeThat;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Integration tests for MySQL Table source. */
 class MySqlConnectorITCase extends MySqlSourceTestBase {
@@ -330,8 +330,8 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
 
         // async submit job
         TableResult result = tEnv.executeSql("INSERT INTO sink SELECT * FROM debezium_source");
-        // wait until the snapshot phase finished
-        waitForSinkSize("sink", 11);
+        // wait until the snapshot phase finished so that binlog will be read later in binlog phase.
+        waitForSinkSize("sink", 12);
 
         try (Connection connection = inventoryDatabase.getJdbcConnection();
                 Statement statement = connection.createStatement()) {
@@ -410,7 +410,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     void testCheckpointIsOptionalUnderSingleParallelism(boolean incrementalSnapshot)
             throws Exception {
         setup(incrementalSnapshot);
-        assumeThat(incrementalSnapshot).isTrue();
+        assertThat(incrementalSnapshot).isTrue();
         env.setParallelism(1);
         // check the checkpoint is optional when parallelism is 1
         env.getCheckpointConfig().disableCheckpointing();
@@ -917,7 +917,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                 Lists.newArrayList("+U[0, 1024]", "+U[1, 1025]", "+U[2, 2048]", "+U[3, 2049]"));
 
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
-        Assertions.assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
         result.getJobClient().get().cancel().get();
     }
 
@@ -1021,7 +1021,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         //  keyby shuffle before "values" upsert sink. We should assert merged result once
         //  https://issues.apache.org/jira/browse/FLINK-24511 is fixed.
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
-        Assertions.assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
         result.getJobClient().get().cancel().get();
     }
 
@@ -2004,7 +2004,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     @ValueSource(booleans = {true, false})
     void testReadingWithMultiMaxValue(boolean incrementalSnapshot) throws Exception {
         setup(incrementalSnapshot);
-        assumeThat(incrementalSnapshot).isTrue();
+        assertThat(incrementalSnapshot).isTrue();
         inventoryDatabase.createAndInitialize();
         String sourceDDL =
                 String.format(
@@ -2134,7 +2134,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     @ValueSource(booleans = {true, false})
     void testBinlogTableMetadataDeserialization(boolean incrementalSnapshot) throws Exception {
         setup(incrementalSnapshot);
-        assumeThat(incrementalSnapshot).isTrue();
+        assertThat(incrementalSnapshot).isTrue();
         binlogDatabase.createAndInitialize();
         String sourceDDL =
                 String.format(
@@ -2284,7 +2284,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
     @ValueSource(booleans = {true, false})
     void testBinaryHandlingModeWithBase64(boolean incrementalSnapshot) throws Exception {
-        assumeThat(incrementalSnapshot).isTrue();
+        assertThat(incrementalSnapshot).isTrue();
         setup(incrementalSnapshot);
         inventoryDatabase.createAndInitialize();
         String sourceDDL =
