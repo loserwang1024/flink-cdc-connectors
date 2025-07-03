@@ -34,9 +34,12 @@ import org.testcontainers.containers.output.Slf4jLogConsumer;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.MountableFile;
 
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -120,13 +123,15 @@ public class FlussE2eITCase extends PipelineTestEnvironment {
     protected final UniqueDatabase inventoryDatabase =
             new UniqueDatabase(MYSQL, "mysql_inventory", MYSQL_TEST_USER, MYSQL_TEST_PASSWORD);
 
+    @Override
+    protected List<String> copyJarToFlinkLib() {
+        return Collections.singletonList("fluss-sql-connector.jar");
+    }
+
     @BeforeEach
     public void before() throws Exception {
         super.before();
         inventoryDatabase.createAndInitialize();
-        jobManager.copyFileToContainer(
-                MountableFile.forHostPath(TestUtils.getResource("fluss-sql-connector.jar")),
-                "/tmp/fluss-sql-connector.jar");
     }
 
     @AfterEach
@@ -174,15 +179,15 @@ public class FlussE2eITCase extends PipelineTestEnvironment {
                 database,
                 "products",
                 Arrays.asList(
-                        "101, One, Alice, 3.202, red, {\"key1\": \"value1\"}, null",
-                        "102, Two, Bob, 1.703, white, {\"key2\": \"value2\"}, null",
-                        "103, Three, Cecily, 4.105, red, {\"key3\": \"value3\"}, null",
-                        "104, Four, Derrida, 1.857, white, {\"key4\": \"value4\"}, null",
-                        "105, Five, Evelyn, 5.211, red, {\"K\": \"V\", \"k\": \"v\"}, null",
-                        "106, Six, Ferris, 9.813, null, null, null",
-                        "107, Seven, Grace, 2.117, null, null, null",
-                        "108, Eight, Hesse, 6.819, null, null, null",
-                        "109, Nine, IINA, 5.223, null, null, null"));
+                        "101, scooter, Small 2-wheel scooter, 3.14, red, {\"key1\": \"value1\"}, {\"coordinates\":[1,1],\"type\":\"Point\",\"srid\":0}",
+                        "102, car battery, 12V car battery, 8.1, white, {\"key2\": \"value2\"}, {\"coordinates\":[2,2],\"type\":\"Point\",\"srid\":0}",
+                        "103, 12-pack drill bits, 12-pack of drill bits with sizes ranging from #40 to #3, 0.8, red, {\"key3\": \"value3\"}, {\"coordinates\":[3,3],\"type\":\"Point\",\"srid\":0}",
+                        "104, hammer, 12oz carpenter's hammer, 0.75, white, {\"key4\": \"value4\"}, {\"coordinates\":[4,4],\"type\":\"Point\",\"srid\":0}",
+                        "105, hammer, 14oz carpenter's hammer, 0.875, red, {\"k1\": \"v1\", \"k2\": \"v2\"}, {\"coordinates\":[5,5],\"type\":\"Point\",\"srid\":0}",
+                        "106, hammer, 16oz carpenter's hammer, 1.0, null, null, null",
+                        "107, rocks, box of assorted rocks, 5.3, null, null, null",
+                        "108, jacket, water resistent black wind breaker, 0.1, null, null, null",
+                        "109, spare tire, 24 inch spare tire, 22.2, null, null, null"));
 
         validateSinkResult(
                 database,
@@ -192,6 +197,46 @@ public class FlussE2eITCase extends PipelineTestEnvironment {
                         "102, user_2, Shanghai, 123567891234",
                         "103, user_3, Shanghai, 123567891234",
                         "104, user_4, Shanghai, 123567891234"));
+
+        String mysqlJdbcUrl =
+                String.format(
+                        "jdbc:mysql://%s:%s/%s",
+                        MYSQL.getHost(),
+                        MYSQL.getDatabasePort(),
+                        inventoryDatabase.getDatabaseName());
+
+        // Fluss does not support applying DDL events for now.
+        try (Connection conn =
+                        DriverManager.getConnection(
+                                mysqlJdbcUrl, MYSQL_TEST_USER, MYSQL_TEST_PASSWORD);
+                Statement stat = conn.createStatement()) {
+            stat.execute("UPDATE products SET description='18oz carpenter hammer' WHERE id=106;");
+            stat.execute("UPDATE products SET weight='5.1' WHERE id=107;");
+            stat.execute("DELETE FROM products WHERE id=111;");
+            stat.execute(
+                    "INSERT INTO products VALUES (default,'jacket','water resistant white wind breaker', 0.2, null, null, null);");
+            stat.execute(
+                    "INSERT INTO products VALUES (default,'scooter','Big 2-wheel scooter', 5.18, null, null, null);");
+        } catch (SQLException e) {
+            LOG.error("Update table for CDC failed.", e);
+            throw e;
+        }
+
+        validateSinkResult(
+                database,
+                "products",
+                Arrays.asList(
+                        "101, scooter, Small 2-wheel scooter, 3.14, red, {\"key1\": \"value1\"}, {\"coordinates\":[1,1],\"type\":\"Point\",\"srid\":0}",
+                        "102, car battery, 12V car battery, 8.1, white, {\"key2\": \"value2\"}, {\"coordinates\":[2,2],\"type\":\"Point\",\"srid\":0}",
+                        "103, 12-pack drill bits, 12-pack of drill bits with sizes ranging from #40 to #3, 0.8, red, {\"key3\": \"value3\"}, {\"coordinates\":[3,3],\"type\":\"Point\",\"srid\":0}",
+                        "104, hammer, 12oz carpenter's hammer, 0.75, white, {\"key4\": \"value4\"}, {\"coordinates\":[4,4],\"type\":\"Point\",\"srid\":0}",
+                        "105, hammer, 14oz carpenter's hammer, 0.875, red, {\"k1\": \"v1\", \"k2\": \"v2\"}, {\"coordinates\":[5,5],\"type\":\"Point\",\"srid\":0}",
+                        "106, hammer, 18oz carpenter hammer, 1.0, null, null, null",
+                        "107, rocks, box of assorted rocks, 5.1, null, null, null",
+                        "108, jacket, water resistent black wind breaker, 0.1, null, null, null",
+                        "109, spare tire, 24 inch spare tire, 22.2, null, null, null",
+                        "110, jacket, water resistant white wind breaker, 0.2, null, null, null",
+                        "111, scooter, Big 2-wheel scooter, 5.18, null, null, null"));
     }
 
     private List<String> fetchFlussTableRows(String database, String table) throws Exception {
@@ -204,13 +249,7 @@ public class FlussE2eITCase extends PipelineTestEnvironment {
         jobManager.copyFileToContainer(Transferable.of(sql), containerSqlPath);
 
         org.testcontainers.containers.Container.ExecResult result =
-                jobManager.execInContainer(
-                        "/opt/flink/bin/sql-client.sh",
-                        "--jar",
-                        "/tmp/fluss-sql-connector.jar",
-                        "-f",
-                        containerSqlPath);
-        LOG.info(result.getStdout());
+                jobManager.execInContainer("/opt/flink/bin/sql-client.sh", "-f", containerSqlPath);
         if (result.getExitCode() != 0) {
             throw new RuntimeException(
                     "Failed to execute peek script. Stdout: "

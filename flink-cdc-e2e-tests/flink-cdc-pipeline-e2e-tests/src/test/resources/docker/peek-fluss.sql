@@ -29,4 +29,4 @@ CREATE CATALOG fluss_catalog WITH (
     'client.security.sasl.password' = 'developer-pass'
 );
 
-SELECT * FROM fluss_catalog.%s.%s;
+SELECT * FROM fluss_catalog.%s.%s LIMIT 20;
