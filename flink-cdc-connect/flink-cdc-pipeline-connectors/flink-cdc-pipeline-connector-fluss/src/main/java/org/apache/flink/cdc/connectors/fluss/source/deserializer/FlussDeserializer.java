@@ -39,7 +39,8 @@ public interface FlussDeserializer<T> extends Serializable {
      * @param record The Fluss scan record to deserialize.
      * @param tablePath The Fluss table path (database.table).
      * @param rowType The Fluss row type of the table schema.
+     * @param schemaId The schema ID associated with this record.
      * @return A list of deserialized output records.
      */
-    List<T> deserialize(ScanRecord record, TablePath tablePath, RowType rowType);
+    List<T> deserialize(ScanRecord record, TablePath tablePath, RowType rowType, int schemaId);
 }

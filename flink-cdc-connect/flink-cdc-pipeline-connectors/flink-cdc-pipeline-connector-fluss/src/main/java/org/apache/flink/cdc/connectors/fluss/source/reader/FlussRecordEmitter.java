@@ -94,7 +94,11 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
             ScanRecord scanRecord, FlussSourceRecord element, SourceOutput<T> output)
             throws Exception {
         List<T> records =
-                deserializer.deserialize(scanRecord, element.getTablePath(), element.getRowType());
+                deserializer.deserialize(
+                        scanRecord,
+                        element.getTablePath(),
+                        element.getRowType(),
+                        element.getSchemaId());
 
         boolean emitted = false;
         for (T record : records) {

@@ -50,7 +50,8 @@ public class FlussRecordDeserializer implements FlussDeserializer<Event> {
     private static final long serialVersionUID = 1L;
 
     @Override
-    public List<Event> deserialize(ScanRecord record, TablePath tablePath, RowType rowType) {
+    public List<Event> deserialize(
+            ScanRecord record, TablePath tablePath, RowType rowType, int schemaId) {
         List<Event> events = new ArrayList<>();
         TableId tableId = TableId.tableId(tablePath.getDatabaseName(), tablePath.getTableName());
         InternalRow row = record.getRow();

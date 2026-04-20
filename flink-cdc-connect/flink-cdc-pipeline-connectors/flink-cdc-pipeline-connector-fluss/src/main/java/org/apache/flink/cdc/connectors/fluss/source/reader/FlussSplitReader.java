@@ -33,6 +33,7 @@ import org.apache.fluss.client.table.Table;
 import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.client.table.scanner.batch.BatchScanner;
 import org.apache.fluss.client.table.scanner.log.LogScanner;
+import org.apache.fluss.client.table.scanner.log.MultipleTableLogScanner;
 import org.apache.fluss.client.table.scanner.log.ScanRecords;
 import org.apache.fluss.config.Configuration;
 import org.apache.fluss.metadata.TableBucket;
@@ -74,8 +75,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
 
     private final Configuration flussConfig;
     private Connection connection;
-
-    private final Map<TablePath, LogScanner> logScanners;
+    private final Map<Long, TablePath> tableIds;
     private final Map<TablePath, Table> tables;
     private final Map<TablePath, RowType> tableRowTypes;
     private final Map<TableBucket, FlussSplitBase> bucketToSplit;
@@ -84,16 +84,17 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
     private final Queue<FlussSplitBase> boundedSplits;
     @Nullable private FlussSplitBase currentBoundedSplit;
     @Nullable private BatchScanner currentBatchScanner;
+    @Nullable private MultipleTableLogScanner currentLogScanner;
     private long snapshotRecordsToSkip;
     private long currentReadRecordsCount;
 
     public FlussSplitReader(Configuration flussConfig) {
         this.flussConfig = flussConfig;
-        this.logScanners = new HashMap<>();
         this.tables = new HashMap<>();
         this.tableRowTypes = new HashMap<>();
         this.bucketToSplit = new HashMap<>();
         this.boundedSplits = new ArrayDeque<>();
+        this.tableIds = new HashMap<>();
     }
 
     @Override
@@ -108,23 +109,25 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         }
 
         // Read from log scanners
-        for (Map.Entry<TablePath, LogScanner> entry : logScanners.entrySet()) {
-            TablePath tablePath = entry.getKey();
-            LogScanner scanner = entry.getValue();
-            RowType rowType = tableRowTypes.get(tablePath);
-
-            ScanRecords scanRecords = scanner.poll(POLL_TIMEOUT);
-            if (scanRecords != null && !scanRecords.isEmpty()) {
-                for (TableBucket bucket : scanRecords.buckets()) {
-                    FlussSplitBase split = bucketToSplit.get(bucket);
-                    if (split == null) {
-                        LOG.warn("Received records for unknown bucket {}, skipping", bucket);
-                        continue;
-                    }
-                    for (ScanRecord record : scanRecords.records(bucket)) {
-                        builder.add(
-                                split.splitId(), new FlussSourceRecord(record, tablePath, rowType));
-                    }
+        MultipleTableLogScanner scanner = getOrCreateTableLogScanner();
+        ScanRecords scanRecords = scanner.poll(POLL_TIMEOUT);
+        if (scanRecords != null && !scanRecords.isEmpty()) {
+            for (TableBucket bucket : scanRecords.buckets()) {
+                FlussSplitBase split = bucketToSplit.get(bucket);
+                if (split == null) {
+                    LOG.warn("Received records for unknown bucket {}, skipping", bucket);
+                    continue;
+                }
+                for (ScanRecord record : scanRecords.records(bucket)) {
+                    long tableId = record.getTableId();
+                    TablePath tablePath = tableIds.get(tableId);
+                    builder.add(
+                            split.splitId(),
+                            new FlussSourceRecord(
+                                    record,
+                                    tablePath,
+                                    record.getRowType(),
+                                    record.getSchemaId()));
                 }
             }
         }
@@ -146,6 +149,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         }
 
         for (FlussSplitBase split : splitsChanges.splits()) {
+            tableIds.put(split.getTableBucket().getTableId(), split.getTablePath());
             if (split.isHybridSnapshotLogSplit()) {
                 FlussHybridSnapshotLogSplit hybrid = split.asHybridSnapshotLogSplit();
                 // If snapshot is not finished, add to pending bounded splits
@@ -217,7 +221,11 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                 builder.add(
                         currentBoundedSplit.splitId(),
                         new FlussSourceRecord(
-                                scanRecord, tablePath, rowType, currentReadRecordsCount));
+                                scanRecord,
+                                tablePath,
+                                rowType,
+                                scanRecord.getSchemaId(),
+                                currentReadRecordsCount));
             }
         } finally {
             batch.close();
@@ -260,40 +268,29 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
 
     private void subscribeLog(FlussSplitBase split, long startingOffset) {
         TablePath tablePath = split.getTablePath();
-        ensureLogScanner(tablePath);
 
-        LogScanner scanner = logScanners.get(tablePath);
-        int bucketId = split.getTableBucket().getBucket();
-        Long partitionId = split.getTableBucket().getPartitionId();
-        if (startingOffset == LogScanner.EARLIEST_OFFSET) {
-            if (partitionId == null) {
-                scanner.subscribeFromBeginning(bucketId);
-            } else {
-                scanner.subscribeFromBeginning(partitionId, bucketId);
-            }
-        } else {
-            if (partitionId == null) {
-                scanner.subscribe(bucketId, startingOffset);
-            } else {
-                scanner.subscribe(partitionId, bucketId, startingOffset);
-            }
-        }
+        MultipleTableLogScanner scanner = getOrCreateTableLogScanner();
+
+        scanner.subscribe(tablePath, split.getTableBucket(), startingOffset, null, null);
 
         bucketToSplit.put(split.getTableBucket(), split);
         LOG.info(
                 "Subscribed bucket {} of table {} at offset {}",
-                bucketId,
+                split.getTableBucket(),
                 split.getPhysicalTablePath(),
                 startingOffset);
     }
 
-    private void ensureLogScanner(TablePath tablePath) {
-        if (!logScanners.containsKey(tablePath)) {
-            Table table = getOrCreateTable(tablePath);
-            LogScanner scanner = table.newScan().createLogScanner();
-            logScanners.put(tablePath, scanner);
-            LOG.info("Created log scanner for table {}", tablePath);
+    private MultipleTableLogScanner getOrCreateTableLogScanner() {
+        if (currentLogScanner != null) {
+            return currentLogScanner;
         }
+        if (connection == null) {
+            connection = ConnectionFactory.createConnection(flussConfig);
+        }
+
+        currentLogScanner = connection.getMultipleTableLogScanner();
+        return currentLogScanner;
     }
 
     protected Table getOrCreateTable(TablePath tablePath) {
@@ -333,13 +330,8 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                 LOG.warn("Error closing batch scanner", e);
             }
         }
-        for (LogScanner scanner : logScanners.values()) {
-            try {
-                scanner.close();
-            } catch (Exception e) {
-                LOG.warn("Error closing log scanner", e);
-            }
-        }
+
+        currentLogScanner.close();
         for (Table table : tables.values()) {
             try {
                 table.close();

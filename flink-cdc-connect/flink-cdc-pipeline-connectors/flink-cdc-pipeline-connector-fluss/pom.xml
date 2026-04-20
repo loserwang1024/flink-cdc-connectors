@@ -33,7 +33,7 @@ limitations under the License.
 
 
     <properties>
-        <fluss.version>0.9.0-incubating</fluss.version>
+        <fluss.version>1.0-SNAPSHOT</fluss.version>
     </properties>
 
     <dependencies>
