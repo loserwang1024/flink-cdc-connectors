@@ -27,6 +27,7 @@ import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussDeserializ
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumState;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumStateSerializer;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumerator;
+import org.apache.flink.cdc.connectors.fluss.source.reader.FlussRecordEmitter;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceReader;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitSerializer;
@@ -112,6 +113,7 @@ public class FlussSource<T> implements Source<T, FlussSplitBase, FlussSourceEnum
 
     @Override
     public SourceReader<T, FlussSplitBase> createReader(SourceReaderContext readerContext) {
-        return new FlussSourceReader<>(readerContext, flussConfig, deserializer);
+        FlussRecordEmitter<T> recordEmitter = new FlussRecordEmitter<>(deserializer);
+        return new FlussSourceReader<>(readerContext, flussConfig, recordEmitter);
     }
 }

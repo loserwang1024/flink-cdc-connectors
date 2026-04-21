@@ -20,6 +20,7 @@ package org.apache.flink.cdc.connectors.fluss.source.reader;
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussDeserializer;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLogSplitState;
+import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitState;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
 
@@ -76,6 +77,8 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
                 // Record from snapshot — update how many records to skip on recovery
                 hybridState.setRecordsToSkip(element.getReadRecordsCount());
             }
+            // Track schemaId for cache restoration on recovery
+            updateSchemaTracking(splitState, scanRecord);
             emitRecords(scanRecord, element, output);
         } else if (splitState.isLogSplitState()) {
             boolean emitted = emitRecords(scanRecord, element, output);
@@ -85,6 +88,9 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
             if (emitted && scanRecord.logOffset() >= 0) {
                 splitState.asLogSplitState().setNextOffset(scanRecord.logOffset() + 1);
             }
+            if (emitted) {
+                updateSchemaTracking(splitState, scanRecord);
+            }
         } else {
             LOG.warn("Unknown split state type: {}", splitState.getClass());
         }
@@ -93,12 +99,7 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
     private boolean emitRecords(
             ScanRecord scanRecord, FlussSourceRecord element, SourceOutput<T> output)
             throws Exception {
-        List<T> records =
-                deserializer.deserialize(
-                        scanRecord,
-                        element.getTablePath(),
-                        element.getRowType(),
-                        element.getSchemaId());
+        List<T> records = deserializer.deserialize(scanRecord, element.getTablePath());
 
         boolean emitted = false;
         for (T record : records) {
@@ -111,5 +112,23 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
             emitted = true;
         }
         return emitted;
+    }
+
+    private void updateSchemaTracking(FlussSplitState splitState, ScanRecord scanRecord) {
+        int schemaId = scanRecord.getSchemaId();
+        if (schemaId >= 0) {
+            splitState.updateSchema(schemaId, scanRecord.getRowType());
+        }
+    }
+
+    /**
+     * Restores the deserializer's internal schema cache from a recovered split. Called during split
+     * initialization to enable correct schema change detection after failover.
+     */
+    public void applySplit(FlussSplitBase split) {
+        if (split.getSchemaId() != null && split.getRowType() != null) {
+            deserializer.restoreState(
+                    split.getTablePath(), split.getSchemaId(), split.getRowType());
+        }
     }
 }

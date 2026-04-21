@@ -19,6 +19,8 @@ package org.apache.flink.cdc.connectors.fluss.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.cdc.common.data.RecordData;
+import org.apache.flink.cdc.common.event.AddColumnEvent;
+import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.TableId;
@@ -132,7 +134,9 @@ public class FlussSourceITCase {
                 .await();
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
-        List<DataChangeEvent> events = collectEvents(source, 3, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 4, COLLECT_TIMEOUT);
+        assertCreateTableEvents(allEvents, tableName);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual)
@@ -154,7 +158,9 @@ public class FlussSourceITCase {
                 .await();
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
-        List<DataChangeEvent> events = collectEvents(source, 5, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 6, COLLECT_TIMEOUT);
+        assertCreateTableEvents(allEvents, tableName);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual)
@@ -189,7 +195,9 @@ public class FlussSourceITCase {
                 .await();
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
-        List<DataChangeEvent> events = collectEvents(source, 4, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 5, COLLECT_TIMEOUT, 1);
+        assertCreateTableEvents(allEvents, tableName);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual =
                 convertToStringList(
@@ -243,7 +251,9 @@ public class FlussSourceITCase {
 
         // Use wildcard pattern to read all tables
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, "mixed_*", "earliest");
-        List<DataChangeEvent> events = collectEvents(source, 6, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 9, COLLECT_TIMEOUT, 1);
+        assertCreateTableEvents(allEvents, pkTable, logTable, partTable);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         // Group events by table and verify each table's records
         Map<String, List<DataChangeEvent>> eventsByTable =
@@ -285,7 +295,9 @@ public class FlussSourceITCase {
                 .await();
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
-        List<DataChangeEvent> events = collectEvents(source, 3, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 4, COLLECT_TIMEOUT);
+        assertCreateTableEvents(allEvents, tableName);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual).containsExactlyInAnyOrder("+I[1, A]", "+I[2, B]", "+I[3, C]");
@@ -313,8 +325,8 @@ public class FlussSourceITCase {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(2);
 
-        List<DataChangeEvent> collectedEvents = Collections.synchronizedList(new ArrayList<>());
-        CountDownLatch latch = new CountDownLatch(2);
+        List<Event> collectedEvents = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch latch = new CountDownLatch(3);
 
         CloseableIterator<Event> iter =
                 env.fromSource(
@@ -330,10 +342,8 @@ public class FlussSourceITCase {
                             try {
                                 while (iter.hasNext()) {
                                     Event event = iter.next();
-                                    if (event instanceof DataChangeEvent) {
-                                        collectedEvents.add((DataChangeEvent) event);
-                                        latch.countDown();
-                                    }
+                                    collectedEvents.add(event);
+                                    latch.countDown();
                                 }
                             } catch (Exception ignored) {
                             }
@@ -359,8 +369,10 @@ public class FlussSourceITCase {
         }
 
         // Should only receive the NEW data (written after source started)
-        List<String> actual =
-                convertToStringList(collectedEvents, DataTypes.INT(), DataTypes.STRING());
+        // todo: 现在分别filter createTableEvent和dataEvents不是很能体现出顺序，后续需要优化
+        assertCreateTableEvents(collectedEvents, tableName);
+        List<DataChangeEvent> dataEvents = filterDataChangeEvents(collectedEvents);
+        List<String> actual = convertToStringList(dataEvents, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual).containsExactlyInAnyOrder("+I[3, New1]", "+I[4, New2]");
     }
 
@@ -393,7 +405,9 @@ public class FlussSourceITCase {
 
         // Start source in "full" mode - should read snapshot + log
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "full");
-        List<DataChangeEvent> events = collectEvents(source, 5, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 6, COLLECT_TIMEOUT);
+        assertCreateTableEvents(allEvents, tableName);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         // All 5 records should be present (3 from snapshot + 2 from log)
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
@@ -439,7 +453,9 @@ public class FlussSourceITCase {
         // Start source from timestamp - should only read data after the marker
         FlussSource<Event> source =
                 createFlussSourceWithTimestamp(DATABASE_NAME, tableName, timestampMarker);
-        List<DataChangeEvent> events = collectEvents(source, 3, COLLECT_TIMEOUT);
+        List<Event> allEvents = collectAllEvents(source, 4, COLLECT_TIMEOUT);
+        assertCreateTableEvents(allEvents, tableName);
+        List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual)
@@ -580,8 +596,9 @@ public class FlussSourceITCase {
                                 new EventTypeInfo())
                         .executeAndCollect("DiscoveryTest");
 
-        List<DataChangeEvent> dataChangeEvents =
-                collectEvents(iter, 2, Duration.ofMinutes(5), false);
+        List<Event> allPhase1 = collectAllEvents(iter, 3, Duration.ofMinutes(5), false);
+        assertCreateTableEvents(allPhase1, tableA);
+        List<DataChangeEvent> dataChangeEvents = filterDataChangeEvents(allPhase1);
         List<String> actual =
                 convertToStringList(dataChangeEvents, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual).containsExactlyInAnyOrder("+I[1, a1]", "+I[2, a2]");
@@ -599,7 +616,9 @@ public class FlussSourceITCase {
                 .await();
 
         // todo: 测试，将event中携带table name
-        dataChangeEvents = collectEvents(iter, 2, Duration.ofMinutes(5), true);
+        List<Event> allPhase2 = collectAllEvents(iter, 3, Duration.ofMinutes(5), true);
+        assertCreateTableEvents(allPhase2, tableB);
+        dataChangeEvents = filterDataChangeEvents(allPhase2);
         actual = convertToStringList(dataChangeEvents, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual).containsExactlyInAnyOrder("+I[1, b1]", "+I[2, b2]");
     }
@@ -641,8 +660,9 @@ public class FlussSourceITCase {
                                 new EventTypeInfo())
                         .executeAndCollect("PartitionDiscoveryTest");
 
-        List<DataChangeEvent> dataChangeEvents =
-                collectEvents(iter, 2, Duration.ofMinutes(5), false);
+        List<Event> allPhase1 = collectAllEvents(iter, 3, Duration.ofMinutes(5), false);
+        assertCreateTableEvents(allPhase1, tableName);
+        List<DataChangeEvent> dataChangeEvents = filterDataChangeEvents(allPhase1);
         List<String> actual =
                 convertToStringList(
                         dataChangeEvents, DataTypes.INT(), DataTypes.STRING(), DataTypes.STRING());
@@ -664,6 +684,86 @@ public class FlussSourceITCase {
                         dataChangeEvents, DataTypes.INT(), DataTypes.STRING(), DataTypes.STRING());
         assertThat(actual)
                 .containsExactlyInAnyOrder("+I[3, 20240102, p2_v1]", "+I[4, 20240102, p2_v2]");
+    }
+
+    @Test
+    void testAddColumnSchemaEvolution() throws Exception {
+        String tableName = "add_column_test";
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "CREATE TABLE %s (id INT, name STRING, PRIMARY KEY (id) NOT ENFORCED)",
+                                tableName))
+                .await();
+
+        // Write initial data with original schema
+        tBatchEnv
+                .executeSql(
+                        String.format("INSERT INTO %s VALUES (1, 'Alice'), (2, 'Bob')", tableName))
+                .await();
+
+        // Start source in earliest mode with discovery interval
+        FlussSource<Event> source =
+                createFlussSourceWithDiscoveryInterval(
+                        DATABASE_NAME, tableName, "earliest", Duration.ofSeconds(10));
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(2);
+
+        CloseableIterator<Event> iter =
+                env.fromSource(
+                                source,
+                                WatermarkStrategy.noWatermarks(),
+                                "FlussSource",
+                                new EventTypeInfo())
+                        .executeAndCollect("AddColumnTest");
+
+        // Phase 1: Collect CreateTableEvent + initial 2 DataChangeEvents
+        List<Event> allPhase1 = collectAllEvents(iter, 3, Duration.ofMinutes(2), false);
+        assertCreateTableEvents(allPhase1, tableName);
+        List<DataChangeEvent> initialEvents = filterDataChangeEvents(allPhase1);
+        List<String> initialStrings =
+                convertToStringList(initialEvents, DataTypes.INT(), DataTypes.STRING());
+        assertThat(initialStrings).containsExactlyInAnyOrder("+I[1, Alice]", "+I[2, Bob]");
+
+        // Phase 2: ALTER TABLE to add a new nullable column
+        tBatchEnv.executeSql(String.format("ALTER TABLE %s ADD `age` INT", tableName)).await();
+
+        // Write new data with the new column populated
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "INSERT INTO %s VALUES (3, 'Charlie', 30), (4, 'David', 40)",
+                                tableName))
+                .await();
+
+        // Phase 3: Collect remaining events — expect 1 AddColumnEvent + 2 DataChangeEvents
+        List<Event> newEvents = collectAllEvents(iter, 3, Duration.ofMinutes(2), true);
+
+        // Verify AddColumnEvent
+        List<AddColumnEvent> addColumnEvents =
+                newEvents.stream()
+                        .filter(e -> e instanceof AddColumnEvent)
+                        .map(e -> (AddColumnEvent) e)
+                        .collect(Collectors.toList());
+        assertThat(addColumnEvents).hasSize(1);
+        AddColumnEvent addEvent = addColumnEvents.get(0);
+        assertThat(addEvent.getAddedColumns()).hasSize(1);
+        assertThat(addEvent.getAddedColumns().get(0).getAddColumn().getName()).isEqualTo("age");
+        assertThat(addEvent.getAddedColumns().get(0).getPosition())
+                .isEqualTo(AddColumnEvent.ColumnPosition.LAST);
+
+        // Verify new DataChangeEvents have 3 fields (id, name, age)
+        List<DataChangeEvent> newDataEvents =
+                newEvents.stream()
+                        .filter(e -> e instanceof DataChangeEvent)
+                        .map(e -> (DataChangeEvent) e)
+                        .collect(Collectors.toList());
+        assertThat(newDataEvents).hasSize(2);
+        List<String> newStrings =
+                convertToStringList(
+                        newDataEvents, DataTypes.INT(), DataTypes.STRING(), DataTypes.INT());
+        assertThat(newStrings).containsExactlyInAnyOrder("+I[3, Charlie, 30]", "+I[4, David, 40]");
     }
 
     // ======================== Helper methods ========================
@@ -713,6 +813,31 @@ public class FlussSourceITCase {
                 offsetsInitializer,
                 discoveryInterval.toMillis(),
                 new FlussRecordDeserializer());
+    }
+
+    /**
+     * Collects ALL event types from a FlussSource using executeAndCollect. Returns when
+     * expectedCount events have been collected or timeout is reached.
+     */
+    private List<Event> collectAllEvents(
+            FlussSource<Event> source, int expectedCount, Duration timeout) throws Exception {
+        return collectAllEvents(source, expectedCount, timeout, 2);
+    }
+
+    private List<Event> collectAllEvents(
+            FlussSource<Event> source, int expectedCount, Duration timeout, int parallelism)
+            throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(parallelism);
+
+        CloseableIterator<Event> iter =
+                env.fromSource(
+                                source,
+                                WatermarkStrategy.noWatermarks(),
+                                "FlussSource",
+                                new EventTypeInfo())
+                        .executeAndCollect("FlussSourceCollect");
+        return collectAllEvents(iter, expectedCount, timeout, true);
     }
 
     /**
@@ -780,6 +905,76 @@ public class FlussSourceITCase {
         }
 
         return events;
+    }
+
+    /**
+     * Collects ALL event types (DataChangeEvent, SchemaChangeEvent, etc.) from the iterator.
+     * Returns when expectedCount events have been collected or timeout is reached.
+     */
+    private List<Event> collectAllEvents(
+            CloseableIterator<Event> iter,
+            int expectedCount,
+            Duration timeout,
+            boolean closeIterator)
+            throws Exception {
+
+        List<Event> events = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch latch = new CountDownLatch(expectedCount);
+
+        Thread collector =
+                new Thread(
+                        () -> {
+                            try {
+                                while (events.size() < expectedCount && iter.hasNext()) {
+                                    Event event = iter.next();
+                                    events.add(event);
+                                    latch.countDown();
+                                }
+                            } catch (Exception ignored) {
+                                // Iterator closed or interrupted
+                            }
+                        },
+                        "all-event-collector");
+        collector.setDaemon(true);
+        collector.start();
+
+        try {
+            boolean completed = latch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (!completed) {
+                LOG.warn(
+                        "Timeout collecting all events. Expected {}, got {}",
+                        expectedCount,
+                        events.size());
+            }
+        } finally {
+            if (closeIterator) {
+                iter.close();
+            }
+            collector.join(5000);
+        }
+
+        return events;
+    }
+
+    private void assertCreateTableEvents(List<Event> events, String... tableNames) {
+        List<CreateTableEvent> createEvents =
+                events.stream()
+                        .filter(e -> e instanceof CreateTableEvent)
+                        .map(e -> (CreateTableEvent) e)
+                        .collect(Collectors.toList());
+        assertThat(createEvents).hasSize(tableNames.length);
+        List<String> actualTableNames =
+                createEvents.stream()
+                        .map(e -> e.tableId().getTableName())
+                        .collect(Collectors.toList());
+        assertThat(actualTableNames).containsExactlyInAnyOrder(tableNames);
+    }
+
+    private List<DataChangeEvent> filterDataChangeEvents(List<Event> events) {
+        return events.stream()
+                .filter(e -> e instanceof DataChangeEvent)
+                .map(e -> (DataChangeEvent) e)
+                .collect(Collectors.toList());
     }
 
     private void assertEventTableIds(

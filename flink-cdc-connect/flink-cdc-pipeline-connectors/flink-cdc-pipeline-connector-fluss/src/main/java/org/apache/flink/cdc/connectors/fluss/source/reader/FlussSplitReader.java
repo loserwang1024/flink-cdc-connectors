@@ -38,6 +38,7 @@ import org.apache.fluss.client.table.scanner.log.ScanRecords;
 import org.apache.fluss.config.Configuration;
 import org.apache.fluss.metadata.TableBucket;
 import org.apache.fluss.metadata.TablePath;
+import org.apache.fluss.record.ChangeType;
 import org.apache.fluss.row.InternalRow;
 import org.apache.fluss.types.DataField;
 import org.apache.fluss.types.RowType;
@@ -84,6 +85,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
     private final Queue<FlussSplitBase> boundedSplits;
     @Nullable private FlussSplitBase currentBoundedSplit;
     @Nullable private BatchScanner currentBatchScanner;
+    @Nullable private Integer currentBatchSchemaId;
     @Nullable private MultipleTableLogScanner currentLogScanner;
     private long snapshotRecordsToSkip;
     private long currentReadRecordsCount;
@@ -123,11 +125,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                     TablePath tablePath = tableIds.get(tableId);
                     builder.add(
                             split.splitId(),
-                            new FlussSourceRecord(
-                                    record,
-                                    tablePath,
-                                    record.getRowType(),
-                                    record.getSchemaId()));
+                            new FlussSourceRecord(record, tablePath, record.getRowType()));
                 }
             }
         }
@@ -184,6 +182,8 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         currentBoundedSplit = nextSplit;
         FlussSnapshotSplit snapshotSplit = nextSplit.asSnapshotSplit();
         Table table = getOrCreateTable(nextSplit.getTablePath());
+        // todo: 校验中间tableId是否和tableBucket中对得上
+        currentBatchSchemaId = table.getTableInfo().getSchemaId();
         currentBatchScanner =
                 table.newScan()
                         .createBatchScanner(
@@ -199,6 +199,9 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
      */
     private void fetchSnapshotRecords(RecordsBySplits.Builder<FlussSourceRecord> builder)
             throws IOException {
+        assert currentBoundedSplit != null;
+        assert currentBatchSchemaId != null;
+        assert currentBatchScanner != null;
         TablePath tablePath = currentBoundedSplit.getTablePath();
         RowType rowType = getRowType(tablePath);
 
@@ -217,15 +220,21 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                     snapshotRecordsToSkip--;
                     continue;
                 }
-                ScanRecord scanRecord = new ScanRecord(row);
+                ScanRecord scanRecord =
+                        new ScanRecord(
+                                currentBoundedSplit.getTableBucket().getTableId(),
+                                currentBatchSchemaId,
+                                rowType,
+                                -1L,
+                                -1L,
+                                ChangeType.INSERT,
+                                row,
+                                // todo: 后续看看如何计算bytes
+                                1);
                 builder.add(
                         currentBoundedSplit.splitId(),
                         new FlussSourceRecord(
-                                scanRecord,
-                                tablePath,
-                                rowType,
-                                scanRecord.getSchemaId(),
-                                currentReadRecordsCount));
+                                scanRecord, tablePath, rowType, currentReadRecordsCount));
             }
         } finally {
             batch.close();
@@ -258,8 +267,11 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         } catch (Exception e) {
             throw new IOException("Failed to close batch scanner", e);
         }
+
+        // todo: 可以封装为一个对象
         currentBatchScanner = null;
         currentBoundedSplit = null;
+        currentBatchSchemaId = null;
     }
 
     // -------------------------------------------------------------------------

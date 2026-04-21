@@ -19,6 +19,9 @@ package org.apache.flink.cdc.connectors.fluss.source.split;
 
 import org.apache.fluss.metadata.PhysicalTablePath;
 import org.apache.fluss.metadata.TableBucket;
+import org.apache.fluss.types.RowType;
+
+import javax.annotation.Nullable;
 
 import java.util.Objects;
 
@@ -37,7 +40,18 @@ public class FlussSnapshotSplit extends FlussSplitBase {
             TableBucket tableBucket,
             long snapshotId,
             long recordsToSkip) {
-        super(tablePath, tableBucket);
+        this(tablePath, tableBucket, snapshotId, recordsToSkip, null, null);
+    }
+
+    /** Full constructor with schema info, typically used during checkpoint recovery. */
+    public FlussSnapshotSplit(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            long snapshotId,
+            long recordsToSkip,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType) {
+        super(tablePath, tableBucket, schemaId, rowType);
         this.snapshotId = snapshotId;
         this.recordsToSkip = recordsToSkip;
     }

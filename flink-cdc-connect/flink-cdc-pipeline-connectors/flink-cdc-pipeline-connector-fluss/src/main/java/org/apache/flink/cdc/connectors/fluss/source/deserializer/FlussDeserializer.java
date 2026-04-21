@@ -38,9 +38,22 @@ public interface FlussDeserializer<T> extends Serializable {
      *
      * @param record The Fluss scan record to deserialize.
      * @param tablePath The Fluss table path (database.table).
-     * @param rowType The Fluss row type of the table schema.
-     * @param schemaId The schema ID associated with this record.
      * @return A list of deserialized output records.
      */
-    List<T> deserialize(ScanRecord record, TablePath tablePath, RowType rowType, int schemaId);
+    List<T> deserialize(ScanRecord record, TablePath tablePath);
+
+    /**
+     * Restores internal state (e.g., schema caches) from a recovered split. Called during split
+     * initialization to enable correct schema change detection after failover.
+     *
+     * <p>The default implementation is a no-op. Override in subclasses that maintain schema caches.
+     *
+     * @param tablePath The Fluss table path.
+     * @param schemaId The schema ID from the checkpointed split.
+     * @param rowType The {@link RowType} corresponding to the schemaId.
+     */
+    // todo: 可以通过context传入，方便后续扩展
+    default void restoreState(TablePath tablePath, int schemaId, RowType rowType) {
+        // Default no-op.
+    }
 }

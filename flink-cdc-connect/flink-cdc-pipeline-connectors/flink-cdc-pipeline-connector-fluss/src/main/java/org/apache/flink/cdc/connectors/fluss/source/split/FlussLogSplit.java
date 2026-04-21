@@ -19,6 +19,9 @@ package org.apache.flink.cdc.connectors.fluss.source.split;
 
 import org.apache.fluss.metadata.PhysicalTablePath;
 import org.apache.fluss.metadata.TableBucket;
+import org.apache.fluss.types.RowType;
+
+import javax.annotation.Nullable;
 
 import java.util.Objects;
 
@@ -32,7 +35,17 @@ public class FlussLogSplit extends FlussSplitBase {
 
     public FlussLogSplit(
             PhysicalTablePath tablePath, TableBucket tableBucket, long startingOffset) {
-        super(tablePath, tableBucket);
+        this(tablePath, tableBucket, startingOffset, null, null);
+    }
+
+    /** Full constructor, typically used during checkpoint recovery. */
+    public FlussLogSplit(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            long startingOffset,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType) {
+        super(tablePath, tableBucket, schemaId, rowType);
         this.startingOffset = startingOffset;
     }
 

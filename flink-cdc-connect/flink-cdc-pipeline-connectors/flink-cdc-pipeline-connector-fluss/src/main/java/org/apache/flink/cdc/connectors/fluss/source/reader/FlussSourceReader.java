@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.fluss.source.reader;
 
 import org.apache.flink.api.connector.source.SourceReaderContext;
-import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussDeserializer;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLogSplitState;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussLogSplitState;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
@@ -49,19 +48,24 @@ public class FlussSourceReader<T>
 
     private static final Logger LOG = LoggerFactory.getLogger(FlussSourceReader.class);
 
+    private final FlussRecordEmitter<T> recordEmitter;
+
     public FlussSourceReader(
             SourceReaderContext readerContext,
             org.apache.fluss.config.Configuration flussConfig,
-            FlussDeserializer<T> deserializer) {
+            FlussRecordEmitter<T> recordEmitter) {
         super(
                 new SingleThreadFetcherManager<>(() -> new FlussSplitReader(flussConfig)),
-                new FlussRecordEmitter<>(deserializer),
+                recordEmitter,
                 new Configuration(),
                 readerContext);
+        this.recordEmitter = recordEmitter;
     }
 
     @Override
     protected FlussSplitState initializedState(FlussSplitBase split) {
+        // Restore deserializer schema caches from the recovered split (like MySQL's applySplit)
+        recordEmitter.applySplit(split);
         if (split.isHybridSnapshotLogSplit()) {
             return new FlussHybridSnapshotLogSplitState(split.asHybridSnapshotLogSplit());
         } else if (split.isLogSplit()) {

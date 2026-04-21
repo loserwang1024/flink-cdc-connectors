@@ -24,10 +24,15 @@ import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.fluss.metadata.PhysicalTablePath;
 import org.apache.fluss.metadata.TableBucket;
 import org.apache.fluss.metadata.TablePath;
+import org.apache.fluss.types.RowType;
+
+import javax.annotation.Nullable;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 
 /**
  * Serializer for {@link FlussSplitBase} and its subclasses. Uses a type tag byte to distinguish
@@ -92,6 +97,10 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                 FlussLogSplit log = split.asLogSplit();
                 out.writeLong(log.getStartingOffset());
             }
+
+            // Write schema info
+            writeSchemaInfo(out, split.getSchemaId(), split.getRowType());
+
             return baos.toByteArray();
         }
     }
@@ -125,7 +134,10 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                             ? new TableBucket(tableId, partitionId, bucket)
                             : new TableBucket(tableId, bucket);
 
-            // Read type-specific fields
+            // Read type-specific fields and schema info
+            @Nullable Integer schemaId = null;
+            @Nullable RowType rowType = null;
+
             switch (type) {
                 case TYPE_HYBRID:
                     {
@@ -133,28 +145,87 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                         long recordsToSkip = in.readLong();
                         long logStartingOffset = in.readLong();
                         boolean snapshotFinished = in.readBoolean();
+                        schemaId = readSchemaId(in);
+                        rowType = readRowType(in);
                         return new FlussHybridSnapshotLogSplit(
                                 physicalTablePath,
                                 tableBucket,
                                 snapshotId,
                                 recordsToSkip,
                                 logStartingOffset,
-                                snapshotFinished);
+                                snapshotFinished,
+                                schemaId,
+                                rowType);
                     }
                 case TYPE_SNAPSHOT:
                     {
                         long snapshotId = in.readLong();
                         long recordsToSkip = in.readLong();
+                        schemaId = readSchemaId(in);
+                        rowType = readRowType(in);
                         return new FlussSnapshotSplit(
-                                physicalTablePath, tableBucket, snapshotId, recordsToSkip);
+                                physicalTablePath,
+                                tableBucket,
+                                snapshotId,
+                                recordsToSkip,
+                                schemaId,
+                                rowType);
                     }
                 case TYPE_LOG:
                 default:
                     {
                         long startingOffset = in.readLong();
-                        return new FlussLogSplit(physicalTablePath, tableBucket, startingOffset);
+                        schemaId = readSchemaId(in);
+                        rowType = readRowType(in);
+                        return new FlussLogSplit(
+                                physicalTablePath, tableBucket, startingOffset, schemaId, rowType);
                     }
             }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    //  Schema info serialization helpers
+    // -------------------------------------------------------------------------
+
+    private static void writeSchemaInfo(
+            DataOutputViewStreamWrapper out, @Nullable Integer schemaId, @Nullable RowType rowType)
+            throws IOException {
+        out.writeBoolean(schemaId != null);
+        if (schemaId != null) {
+            out.writeInt(schemaId);
+        }
+        out.writeBoolean(rowType != null);
+        if (rowType != null) {
+            ByteArrayOutputStream rowTypeBaos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(rowTypeBaos);
+            oos.writeObject(rowType);
+            oos.flush();
+            byte[] rowTypeBytes = rowTypeBaos.toByteArray();
+            out.writeInt(rowTypeBytes.length);
+            out.write(rowTypeBytes);
+        }
+    }
+
+    private static @Nullable Integer readSchemaId(DataInputViewStreamWrapper in)
+            throws IOException {
+        boolean hasSchemaId = in.readBoolean();
+        return hasSchemaId ? in.readInt() : null;
+    }
+
+    private static @Nullable RowType readRowType(DataInputViewStreamWrapper in) throws IOException {
+        boolean hasRowType = in.readBoolean();
+        if (!hasRowType) {
+            return null;
+        }
+        try {
+            int len = in.readInt();
+            byte[] rowTypeBytes = new byte[len];
+            in.readFully(rowTypeBytes);
+            ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(rowTypeBytes));
+            return (RowType) ois.readObject();
+        } catch (ClassNotFoundException e) {
+            throw new IOException("Failed to deserialize RowType", e);
         }
     }
 }

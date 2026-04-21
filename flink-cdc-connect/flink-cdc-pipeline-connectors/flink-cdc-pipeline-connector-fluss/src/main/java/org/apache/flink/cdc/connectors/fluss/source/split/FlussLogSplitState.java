@@ -34,6 +34,11 @@ public class FlussLogSplitState extends FlussSplitState {
 
     @Override
     public FlussLogSplit toFlussSplit() {
-        return new FlussLogSplit(split.getPhysicalTablePath(), split.getTableBucket(), nextOffset);
+        return new FlussLogSplit(
+                split.getPhysicalTablePath(),
+                split.getTableBucket(),
+                nextOffset,
+                getSchemaId(),
+                getRowType());
     }
 }

@@ -37,26 +37,19 @@ public class FlussSourceRecord {
     private final ScanRecord scanRecord;
     private final TablePath tablePath;
     private final RowType rowType;
-    private final int schemaId;
     private final long readRecordsCount;
 
     /** Creates a log record (no snapshot position tracking). */
-    public FlussSourceRecord(
-            ScanRecord scanRecord, TablePath tablePath, RowType rowType, int schemaId) {
-        this(scanRecord, tablePath, rowType, schemaId, NO_READ_RECORDS_COUNT);
+    public FlussSourceRecord(ScanRecord scanRecord, TablePath tablePath, RowType rowType) {
+        this(scanRecord, tablePath, rowType, NO_READ_RECORDS_COUNT);
     }
 
     /** Creates a snapshot record with the cumulative read count for recovery. */
     public FlussSourceRecord(
-            ScanRecord scanRecord,
-            TablePath tablePath,
-            RowType rowType,
-            int schemaId,
-            long readRecordsCount) {
+            ScanRecord scanRecord, TablePath tablePath, RowType rowType, long readRecordsCount) {
         this.scanRecord = scanRecord;
         this.tablePath = tablePath;
         this.rowType = rowType;
-        this.schemaId = schemaId;
         this.readRecordsCount = readRecordsCount;
     }
 
@@ -70,10 +63,6 @@ public class FlussSourceRecord {
 
     public RowType getRowType() {
         return rowType;
-    }
-
-    public int getSchemaId() {
-        return schemaId;
     }
 
     public long getReadRecordsCount() {

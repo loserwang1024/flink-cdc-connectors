@@ -19,6 +19,9 @@ package org.apache.flink.cdc.connectors.fluss.source.split;
 
 import org.apache.fluss.metadata.PhysicalTablePath;
 import org.apache.fluss.metadata.TableBucket;
+import org.apache.fluss.types.RowType;
+
+import javax.annotation.Nullable;
 
 import java.util.Objects;
 
@@ -41,7 +44,7 @@ public class FlussHybridSnapshotLogSplit extends FlussSnapshotSplit {
             TableBucket tableBucket,
             long snapshotId,
             long logStartingOffset) {
-        this(tablePath, tableBucket, snapshotId, 0, logStartingOffset, false);
+        this(tablePath, tableBucket, snapshotId, 0, logStartingOffset, false, null, null);
     }
 
     /** Full constructor, typically used during checkpoint recovery. */
@@ -52,7 +55,28 @@ public class FlussHybridSnapshotLogSplit extends FlussSnapshotSplit {
             long recordsToSkip,
             long logStartingOffset,
             boolean snapshotFinished) {
-        super(tablePath, tableBucket, snapshotId, recordsToSkip);
+        this(
+                tablePath,
+                tableBucket,
+                snapshotId,
+                recordsToSkip,
+                logStartingOffset,
+                snapshotFinished,
+                null,
+                null);
+    }
+
+    /** Full constructor with schema info, typically used during checkpoint recovery. */
+    public FlussHybridSnapshotLogSplit(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            long snapshotId,
+            long recordsToSkip,
+            long logStartingOffset,
+            boolean snapshotFinished,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType) {
+        super(tablePath, tableBucket, snapshotId, recordsToSkip, schemaId, rowType);
         this.logStartingOffset = logStartingOffset;
         this.snapshotFinished = snapshotFinished;
     }

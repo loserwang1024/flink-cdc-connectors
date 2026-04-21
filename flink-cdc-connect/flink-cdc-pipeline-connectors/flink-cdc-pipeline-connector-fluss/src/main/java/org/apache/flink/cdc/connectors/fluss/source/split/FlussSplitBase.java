@@ -22,6 +22,9 @@ import org.apache.flink.api.connector.source.SourceSplit;
 import org.apache.fluss.metadata.PhysicalTablePath;
 import org.apache.fluss.metadata.TableBucket;
 import org.apache.fluss.metadata.TablePath;
+import org.apache.fluss.types.RowType;
+
+import javax.annotation.Nullable;
 
 /**
  * Abstract base class for all Fluss source splits. Each split corresponds to a single bucket of a
@@ -41,9 +44,31 @@ public abstract class FlussSplitBase implements SourceSplit {
     protected final PhysicalTablePath tablePath;
     protected final TableBucket tableBucket;
 
+    /**
+     * The schema ID of the last record processed by this split. {@code null} when created by the
+     * enumerator (unknown until records are read).
+     */
+    protected final @Nullable Integer schemaId;
+
+    /**
+     * The {@link RowType} corresponding to {@link #schemaId}. Used to restore the deserializer's
+     * schema cache on recovery.
+     */
+    protected final @Nullable RowType rowType;
+
     protected FlussSplitBase(PhysicalTablePath tablePath, TableBucket tableBucket) {
+        this(tablePath, tableBucket, null, null);
+    }
+
+    protected FlussSplitBase(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType) {
         this.tablePath = tablePath;
         this.tableBucket = tableBucket;
+        this.schemaId = schemaId;
+        this.rowType = rowType;
     }
 
     @Override
@@ -75,6 +100,14 @@ public abstract class FlussSplitBase implements SourceSplit {
 
     public TableBucket getTableBucket() {
         return tableBucket;
+    }
+
+    public @Nullable Integer getSchemaId() {
+        return schemaId;
+    }
+
+    public @Nullable RowType getRowType() {
+        return rowType;
     }
 
     public boolean isLogSplit() {

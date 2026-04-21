@@ -17,6 +17,10 @@
 
 package org.apache.flink.cdc.connectors.fluss.source.split;
 
+import org.apache.fluss.types.RowType;
+
+import javax.annotation.Nullable;
+
 /**
  * Abstract base class for the mutable state of a {@link FlussSplitBase}. Concrete subclasses track
  * the reading progress for each split type and convert back to an immutable split on checkpoint.
@@ -28,8 +32,16 @@ public abstract class FlussSplitState {
 
     protected final FlussSplitBase split;
 
+    /** Tracks the latest schema ID seen by this split (updated during record emission). */
+    private @Nullable Integer schemaId;
+
+    /** Tracks the {@link RowType} corresponding to {@link #schemaId}. */
+    private @Nullable RowType rowType;
+
     public FlussSplitState(FlussSplitBase split) {
         this.split = split;
+        this.schemaId = split.getSchemaId();
+        this.rowType = split.getRowType();
     }
 
     /** Checks whether this split state is a hybrid snapshot log split state. */
@@ -54,4 +66,21 @@ public abstract class FlussSplitState {
 
     /** Converts this mutable state back to an immutable split for checkpointing. */
     public abstract FlussSplitBase toFlussSplit();
+
+    public @Nullable Integer getSchemaId() {
+        return schemaId;
+    }
+
+    public @Nullable RowType getRowType() {
+        return rowType;
+    }
+
+    /**
+     * Updates the schema tracking with the latest schemaId and corresponding RowType. Called by the
+     * record emitter when processing records.
+     */
+    public void updateSchema(int schemaId, RowType rowType) {
+        this.schemaId = schemaId;
+        this.rowType = rowType;
+    }
 }

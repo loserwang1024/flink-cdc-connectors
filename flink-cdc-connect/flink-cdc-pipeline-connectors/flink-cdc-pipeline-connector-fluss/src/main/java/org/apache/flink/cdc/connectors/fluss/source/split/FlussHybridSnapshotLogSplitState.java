@@ -55,6 +55,8 @@ public class FlussHybridSnapshotLogSplitState extends FlussSplitState {
                 hybrid.getSnapshotId(),
                 recordsToSkip,
                 nextOffset,
-                snapshotFinished);
+                snapshotFinished,
+                getSchemaId(),
+                getRowType());
     }
 }
