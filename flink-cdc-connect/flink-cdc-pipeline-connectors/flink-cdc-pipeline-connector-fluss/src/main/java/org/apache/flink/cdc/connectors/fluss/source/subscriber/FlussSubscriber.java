@@ -17,24 +17,33 @@
 
 package org.apache.flink.cdc.connectors.fluss.source.subscriber;
 
-import org.apache.fluss.client.admin.Admin;
+import org.apache.fluss.client.Connection;
 import org.apache.fluss.metadata.TablePath;
 
 import java.io.Serializable;
 import java.util.Set;
 
 /**
- * Abstraction for subscribing to a set of Fluss tables. Implementations determine which tables to
- * read, either by explicit listing or by pattern matching.
+ * Pluggable abstraction for subscribing to a set of Fluss tables. Implementations determine which
+ * tables the source should read. Two built-in implementations are provided:
+ *
+ * <ul>
+ *   <li>{@link PatternSubscriber} - matches fully-qualified table names ("database.tableName") with
+ *       a user-defined regex.
+ *   <li>{@link FlussTableSubscriber} - reads the subscription list from a Fluss primary-key table.
+ * </ul>
  */
 public interface FlussSubscriber extends Serializable {
 
     /**
      * Returns the set of Fluss table paths to subscribe to.
      *
-     * @param admin The Fluss admin client used to discover tables.
+     * @param connection The Fluss client connection used to discover tables. Implementations may
+     *     obtain the {@link org.apache.fluss.client.admin.Admin} via {@code connection.getAdmin()},
+     *     or open a {@link org.apache.fluss.client.table.Table} to read metadata from another Fluss
+     *     table. Implementations must NOT close the connection.
      * @return A set of {@link TablePath} representing the tables to read.
      * @throws Exception if the discovery fails.
      */
-    Set<TablePath> getSubscribedTablePaths(Admin admin) throws Exception;
+    Set<TablePath> getSubscribedTablePaths(Connection connection) throws Exception;
 }

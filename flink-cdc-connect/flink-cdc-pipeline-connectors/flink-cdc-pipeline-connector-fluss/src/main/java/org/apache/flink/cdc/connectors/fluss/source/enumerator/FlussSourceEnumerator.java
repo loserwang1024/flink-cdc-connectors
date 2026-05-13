@@ -162,7 +162,7 @@ public class FlussSourceEnumerator
      */
     private List<TableBucketInfo> getSubscribedTableBuckets() throws Exception {
         List<TableBucketInfo> allBuckets = new ArrayList<>();
-        Set<TablePath> subscribedPaths = subscriber.getSubscribedTablePaths(admin);
+        Set<TablePath> subscribedPaths = subscriber.getSubscribedTablePaths(connection);
 
         for (TablePath tablePath : subscribedPaths) {
             TableInfo tableInfo = admin.getTableInfo(tablePath).get();

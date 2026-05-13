@@ -33,19 +33,25 @@ public class FlussDataSourceOptions {
                     .noDefaultValue()
                     .withDescription("The bootstrap servers for the Fluss source connection.");
 
-    public static final ConfigOption<String> DATABASE =
-            ConfigOptions.key("database")
-                    .stringType()
-                    .noDefaultValue()
-                    .withDescription("The database name to read from Fluss.");
+    /**
+     * Prefix shared by all {@code subscriber.*} keys. {@code FlussDataSourceFactory} excludes this
+     * prefix from strict option validation so that each {@link
+     * org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriberFactory}
+     * implementation is free to declare its own namespaced options (e.g. {@code
+     * subscriber.pattern}, {@code subscriber.fluss}) without being enumerated here.
+     */
+    public static final String SUBSCRIBER_OPTIONS_PREFIX = "subscriber.";
 
-    public static final ConfigOption<String> TABLE =
-            ConfigOptions.key("table")
+    public static final ConfigOption<String> SUBSCRIBER_TYPE =
+            ConfigOptions.key("subscriber.type")
                     .stringType()
-                    .defaultValue("*")
+                    .defaultValue("pattern")
                     .withDescription(
-                            "The table name pattern to read from Fluss. "
-                                    + "Supports '*' wildcard to match all tables in the database.");
+                            "The subscriber type that decides which Fluss tables to read. The value "
+                                    + "is matched against the identifier of a registered "
+                                    + "FlussSubscriberFactory (loaded via Java SPI). Built-in values: "
+                                    + "'pattern' (default; reads its config from 'subscriber.pattern') "
+                                    + "and 'fluss' (reads its config from 'subscriber.fluss').");
 
     public static final ConfigOption<String> SCAN_STARTUP_MODE =
             ConfigOptions.key("scan.startup.mode")

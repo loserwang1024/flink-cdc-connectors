@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.fluss.source.subscriber;
 
+import org.apache.fluss.client.Connection;
 import org.apache.fluss.client.admin.Admin;
 import org.apache.fluss.metadata.TablePath;
 
@@ -26,41 +27,47 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * A {@link FlussSubscriber} that subscribes to tables matching a wildcard pattern within a given
- * database. The pattern uses '*' as a wildcard, which is converted to regex '.*' for matching.
+ * A {@link FlussSubscriber} that subscribes to Fluss tables whose fully-qualified name (formatted
+ * as {@code "database.tableName"}) matches a user-provided Java regular expression.
+ *
+ * <p>The pattern is matched against the fully-qualified name of every table across every database
+ * visible to the Fluss cluster. A single regex can therefore span multiple databases, e.g. {@code
+ * "source_db\\..*|audit_db\\.events_.*"}.
+ *
+ * <p>Note: dots in database or table names must be escaped (e.g. {@code "db\\.table"}) because
+ * {@code .} is a regex meta-character.
  */
 public class PatternSubscriber implements FlussSubscriber {
 
     private static final long serialVersionUID = 1L;
 
-    private final String database;
-    private final String tablePattern;
+    /** Java regex matching fully-qualified {@code database.tableName} strings. */
+    private final String pattern;
 
-    public PatternSubscriber(String database, String tablePattern) {
-        this.database = database;
-        this.tablePattern = tablePattern;
+    public PatternSubscriber(String pattern) {
+        this.pattern = pattern;
     }
 
     @Override
-    public Set<TablePath> getSubscribedTablePaths(Admin admin) throws Exception {
-        String regex = "^" + tablePattern.replace("*", ".*") + "$";
-        Pattern pattern = Pattern.compile(regex);
+    public Set<TablePath> getSubscribedTablePaths(Connection connection) throws Exception {
+        Pattern compiled = Pattern.compile("^" + pattern + "$");
 
-        List<String> allTables = admin.listTables(database).get();
+        Admin admin = connection.getAdmin();
         Set<TablePath> matched = new LinkedHashSet<>();
-        for (String tableName : allTables) {
-            if (pattern.matcher(tableName).matches()) {
-                matched.add(new TablePath(database, tableName));
+        List<String> databases = admin.listDatabases().get();
+        for (String database : databases) {
+            List<String> tables = admin.listTables(database).get();
+            for (String tableName : tables) {
+                String fqn = database + "." + tableName;
+                if (compiled.matcher(fqn).matches()) {
+                    matched.add(new TablePath(database, tableName));
+                }
             }
         }
         return matched;
     }
 
-    public String getDatabase() {
-        return database;
-    }
-
-    public String getTablePattern() {
-        return tablePattern;
+    public String getPattern() {
+        return pattern;
     }
 }

@@ -27,6 +27,7 @@ import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussRecordDeserializer;
+import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussTableSubscriber;
 import org.apache.flink.cdc.connectors.fluss.source.subscriber.PatternSubscriber;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.core.execution.JobClient;
@@ -624,6 +625,91 @@ public class FlussSourceITCase {
     }
 
     @Test
+    void testNewTableDiscoveryViaSubscriptionTable() throws Exception {
+        // 1. Create the subscription table: single STRING pk column that holds the FQN
+        //    (database.tableName) of each subscribed table.
+        String subscriptionTable = "subscription_list";
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "CREATE TABLE %s (table_name STRING, PRIMARY KEY (table_name) NOT ENFORCED)",
+                                subscriptionTable))
+                .await();
+
+        // 2. Create target table A and seed initial subscription pointing to A.
+        String tableA = "sub_discover_a";
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "CREATE TABLE %s (id INT, val STRING, PRIMARY KEY (id) NOT ENFORCED)",
+                                tableA))
+                .await();
+        tBatchEnv
+                .executeSql(String.format("INSERT INTO %s VALUES (1, 'a1'), (2, 'a2')", tableA))
+                .await();
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "INSERT INTO %s VALUES ('%s.%s')",
+                                subscriptionTable, DATABASE_NAME, tableA))
+                .await();
+
+        // 3. Start the source using FlussTableSubscriber.
+        FlussSource<Event> source =
+                createFlussSourceWithTableSubscriber(
+                        DATABASE_NAME + "." + subscriptionTable,
+                        100,
+                        "earliest",
+                        Duration.ofSeconds(10));
+
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(2);
+
+        CloseableIterator<Event> iter =
+                env.fromSource(
+                                source,
+                                WatermarkStrategy.noWatermarks(),
+                                "FlussSource",
+                                new EventTypeInfo())
+                        .executeAndCollect("FlussTableSubscriberDiscoveryTest");
+
+        // Phase 1: should receive CreateTable(tableA) + its 2 data rows.
+        List<Event> phase1 = collectAllEvents(iter, 3, Duration.ofMinutes(5), false);
+        assertCreateTableEvents(phase1, tableA);
+        List<String> actualA =
+                convertToStringList(
+                        filterDataChangeEvents(phase1), DataTypes.INT(), DataTypes.STRING());
+        assertThat(actualA).containsExactlyInAnyOrder("+I[1, a1]", "+I[2, a2]");
+
+        // 4. Dynamically extend the subscription: append a row pointing to a freshly
+        //    created table B. The running enumerator should discover B on its next cycle.
+        String tableB = "sub_discover_b";
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "CREATE TABLE %s (id INT, val STRING, PRIMARY KEY (id) NOT ENFORCED)",
+                                tableB))
+                .await();
+        tBatchEnv
+                .executeSql(String.format("INSERT INTO %s VALUES (1, 'b1'), (2, 'b2')", tableB))
+                .await();
+        tBatchEnv
+                .executeSql(
+                        String.format(
+                                "INSERT INTO %s VALUES ('%s.%s')",
+                                subscriptionTable, DATABASE_NAME, tableB))
+                .await();
+
+        // Phase 2: should receive CreateTable(tableB) + its 2 data rows.
+        List<Event> phase2 = collectAllEvents(iter, 3, Duration.ofMinutes(5), true);
+        assertCreateTableEvents(phase2, tableB);
+        List<String> actualB =
+                convertToStringList(
+                        filterDataChangeEvents(phase2), DataTypes.INT(), DataTypes.STRING());
+        assertThat(actualB).containsExactlyInAnyOrder("+I[1, b1]", "+I[2, b2]");
+    }
+
+    @Test
     void testNewPartitionDiscovery() throws Exception {
         String tableName = "part_discover_table";
         tBatchEnv
@@ -778,7 +864,7 @@ public class FlussSourceITCase {
             String database, String tablePattern, long timestampMs) {
         org.apache.fluss.config.Configuration flussConfig =
                 FLUSS_CLUSTER_EXTENSION.getClientConfig();
-        PatternSubscriber subscriber = new PatternSubscriber(database, tablePattern);
+        PatternSubscriber subscriber = new PatternSubscriber(toFqnRegex(database, tablePattern));
         OffsetsInitializer offsetsInitializer = OffsetsInitializer.timestamp(timestampMs);
         return new FlussSource<>(
                 subscriber,
@@ -788,11 +874,14 @@ public class FlussSourceITCase {
                 new FlussRecordDeserializer());
     }
 
-    private FlussSource<Event> createFlussSourceWithDiscoveryInterval(
-            String database, String tablePattern, String startupMode, Duration discoveryInterval) {
+    private FlussSource<Event> createFlussSourceWithTableSubscriber(
+            String subscriptionTableFqn,
+            int limit,
+            String startupMode,
+            Duration discoveryInterval) {
         org.apache.fluss.config.Configuration flussConfig =
                 FLUSS_CLUSTER_EXTENSION.getClientConfig();
-        PatternSubscriber subscriber = new PatternSubscriber(database, tablePattern);
+        FlussTableSubscriber subscriber = new FlussTableSubscriber(subscriptionTableFqn, limit);
         OffsetsInitializer offsetsInitializer;
         switch (startupMode) {
             case "earliest":
@@ -813,6 +902,42 @@ public class FlussSourceITCase {
                 offsetsInitializer,
                 discoveryInterval.toMillis(),
                 new FlussRecordDeserializer());
+    }
+
+    private FlussSource<Event> createFlussSourceWithDiscoveryInterval(
+            String database, String tablePattern, String startupMode, Duration discoveryInterval) {
+        org.apache.fluss.config.Configuration flussConfig =
+                FLUSS_CLUSTER_EXTENSION.getClientConfig();
+        PatternSubscriber subscriber = new PatternSubscriber(toFqnRegex(database, tablePattern));
+        OffsetsInitializer offsetsInitializer;
+        switch (startupMode) {
+            case "earliest":
+                offsetsInitializer = OffsetsInitializer.earliest();
+                break;
+            case "latest":
+                offsetsInitializer = OffsetsInitializer.latest();
+                break;
+            case "full":
+                offsetsInitializer = OffsetsInitializer.full();
+                break;
+            default:
+                throw new IllegalArgumentException("Unknown startup mode: " + startupMode);
+        }
+        return new FlussSource<>(
+                subscriber,
+                flussConfig,
+                offsetsInitializer,
+                discoveryInterval.toMillis(),
+                new FlussRecordDeserializer());
+    }
+
+    /**
+     * Translates the legacy (database, tablePattern) arguments into a single Java regex matching
+     * fully-qualified {@code database.tableName} names. The {@code '*'} wildcard in the old
+     * tablePattern is translated to regex {@code .*}.
+     */
+    private static String toFqnRegex(String database, String tablePattern) {
+        return java.util.regex.Pattern.quote(database) + "\\." + tablePattern.replace("*", ".*");
     }
 
     /**
