@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.fluss.source.reader;
 
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLogSplit;
-import org.apache.flink.cdc.connectors.fluss.source.split.FlussLogSplit;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSnapshotSplit;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
 import org.apache.flink.connector.base.source.reader.RecordsBySplits;
@@ -30,11 +29,12 @@ import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.fluss.client.Connection;
 import org.apache.fluss.client.ConnectionFactory;
 import org.apache.fluss.client.table.Table;
+import org.apache.fluss.client.table.scanner.MultiTableRecord;
 import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.client.table.scanner.batch.BatchScanner;
 import org.apache.fluss.client.table.scanner.log.LogScanner;
-import org.apache.fluss.client.table.scanner.log.MultipleTableLogScanner;
-import org.apache.fluss.client.table.scanner.log.ScanRecords;
+import org.apache.fluss.client.table.scanner.log.MultiTableLogScanner;
+import org.apache.fluss.client.table.scanner.log.MultiTableRecords;
 import org.apache.fluss.config.Configuration;
 import org.apache.fluss.metadata.TableBucket;
 import org.apache.fluss.metadata.TablePath;
@@ -62,10 +62,6 @@ import java.util.Queue;
  * scanners and wraps them as {@link FlussSourceRecord}s, which include the table context (table
  * path and row type) needed for downstream deserialization.
  *
- * <p>For {@link FlussHybridSnapshotLogSplit}s, it first reads the bounded KV snapshot via a {@link
- * BatchScanner}, then switches to reading change log from the log scanner. For {@link
- * FlussLogSplit}s, it reads directly from the log scanner.
- *
  * <p>For each table, a single Fluss {@link LogScanner} is shared across all bucket-level splits.
  */
 public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSplitBase> {
@@ -76,7 +72,6 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
 
     private final Configuration flussConfig;
     private Connection connection;
-    private final Map<Long, TablePath> tableIds;
     private final Map<TablePath, Table> tables;
     private final Map<TablePath, RowType> tableRowTypes;
     private final Map<TableBucket, FlussSplitBase> bucketToSplit;
@@ -86,7 +81,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
     @Nullable private FlussSplitBase currentBoundedSplit;
     @Nullable private BatchScanner currentBatchScanner;
     @Nullable private Integer currentBatchSchemaId;
-    @Nullable private MultipleTableLogScanner currentLogScanner;
+    @Nullable private MultiTableLogScanner currentLogScanner;
     private long snapshotRecordsToSkip;
     private long currentReadRecordsCount;
 
@@ -96,7 +91,6 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         this.tableRowTypes = new HashMap<>();
         this.bucketToSplit = new HashMap<>();
         this.boundedSplits = new ArrayDeque<>();
-        this.tableIds = new HashMap<>();
     }
 
     @Override
@@ -111,21 +105,19 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         }
 
         // Read from log scanners
-        MultipleTableLogScanner scanner = getOrCreateTableLogScanner();
-        ScanRecords scanRecords = scanner.poll(POLL_TIMEOUT);
+        MultiTableLogScanner scanner = getOrCreateTableLogScanner();
+        MultiTableRecords scanRecords = scanner.poll(POLL_TIMEOUT);
         if (scanRecords != null && !scanRecords.isEmpty()) {
-            for (TableBucket bucket : scanRecords.buckets()) {
-                FlussSplitBase split = bucketToSplit.get(bucket);
-                if (split == null) {
-                    LOG.warn("Received records for unknown bucket {}, skipping", bucket);
-                    continue;
-                }
-                for (ScanRecord record : scanRecords.records(bucket)) {
-                    long tableId = record.getTableId();
-                    TablePath tablePath = tableIds.get(tableId);
-                    builder.add(
-                            split.splitId(),
-                            new FlussSourceRecord(record, tablePath, record.getRowType()));
+            for (TablePath tablePath : scanRecords.tablePaths()) {
+                for (TableBucket bucket : scanRecords.buckets(tablePath)) {
+                    for (MultiTableRecord record : scanRecords.records(tablePath, bucket)) {
+                        FlussSplitBase split = bucketToSplit.get(bucket);
+                        if (split == null) {
+                            LOG.warn("Received records for unknown bucket {}, skipping", bucket);
+                            continue;
+                        }
+                        builder.add(split.splitId(), new FlussSourceRecord(record));
+                    }
                 }
             }
         }
@@ -147,7 +139,6 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         }
 
         for (FlussSplitBase split : splitsChanges.splits()) {
-            tableIds.put(split.getTableBucket().getTableId(), split.getTablePath());
             if (split.isHybridSnapshotLogSplit()) {
                 FlussHybridSnapshotLogSplit hybrid = split.asHybridSnapshotLogSplit();
                 // If snapshot is not finished, add to pending bounded splits
@@ -224,7 +215,6 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                         new ScanRecord(
                                 currentBoundedSplit.getTableBucket().getTableId(),
                                 currentBatchSchemaId,
-                                rowType,
                                 -1L,
                                 -1L,
                                 ChangeType.INSERT,
@@ -280,12 +270,21 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
 
     private void subscribeLog(FlussSplitBase split, long startingOffset) {
         TablePath tablePath = split.getTablePath();
+        TableBucket tableBucket = split.getTableBucket();
 
-        MultipleTableLogScanner scanner = getOrCreateTableLogScanner();
+        MultiTableLogScanner scanner = getOrCreateTableLogScanner();
 
-        scanner.subscribe(tablePath, split.getTableBucket(), startingOffset, null, null);
+        if (tableBucket.getPartitionId() != null) {
+            scanner.subscribe(
+                    tablePath,
+                    tableBucket.getPartitionId(),
+                    tableBucket.getBucket(),
+                    startingOffset);
+        } else {
+            scanner.subscribe(tablePath, tableBucket.getBucket(), startingOffset);
+        }
 
-        bucketToSplit.put(split.getTableBucket(), split);
+        bucketToSplit.put(tableBucket, split);
         LOG.info(
                 "Subscribed bucket {} of table {} at offset {}",
                 split.getTableBucket(),
@@ -293,7 +292,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                 startingOffset);
     }
 
-    private MultipleTableLogScanner getOrCreateTableLogScanner() {
+    private MultiTableLogScanner getOrCreateTableLogScanner() {
         if (currentLogScanner != null) {
             return currentLogScanner;
         }
@@ -301,7 +300,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
             connection = ConnectionFactory.createConnection(flussConfig);
         }
 
-        currentLogScanner = connection.getMultipleTableLogScanner();
+        currentLogScanner = connection.getMultiTable().newMultiTableScan().createLogScanner();
         return currentLogScanner;
     }
 
@@ -343,7 +342,9 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
             }
         }
 
-        currentLogScanner.close();
+        if (currentLogScanner != null) {
+            currentLogScanner.close();
+        }
         for (Table table : tables.values()) {
             try {
                 table.close();

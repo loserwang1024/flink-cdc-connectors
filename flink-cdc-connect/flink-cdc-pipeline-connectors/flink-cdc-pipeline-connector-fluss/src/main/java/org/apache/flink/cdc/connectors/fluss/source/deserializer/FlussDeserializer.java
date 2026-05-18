@@ -17,6 +17,8 @@
 
 package org.apache.flink.cdc.connectors.fluss.source.deserializer;
 
+import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceRecord;
+
 import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.metadata.TablePath;
 import org.apache.fluss.types.RowType;
@@ -40,7 +42,7 @@ public interface FlussDeserializer<T> extends Serializable {
      * @param tablePath The Fluss table path (database.table).
      * @return A list of deserialized output records.
      */
-    List<T> deserialize(ScanRecord record, TablePath tablePath);
+    List<T> deserialize(FlussSourceRecord element, TablePath tablePath);
 
     /**
      * Restores internal state (e.g., schema caches) from a recovered split. Called during split
@@ -53,6 +55,7 @@ public interface FlussDeserializer<T> extends Serializable {
      * @param rowType The {@link RowType} corresponding to the schemaId.
      */
     // todo: 可以通过context传入，方便后续扩展
+    // todo: split只保存shemaId，防止schema太大，重启后通过get schema来获取
     default void restoreState(TablePath tablePath, int schemaId, RowType rowType) {
         // Default no-op.
     }

@@ -30,6 +30,7 @@ import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.types.DataType;
+import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceRecord;
 import org.apache.flink.cdc.connectors.fluss.utils.FlussConversions;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
 
@@ -71,14 +72,14 @@ public class FlussRecordDeserializer implements FlussDeserializer<Event> {
     private transient Map<TablePath, BinaryRecordDataGenerator> latestRecordDataGeneratorCache;
 
     @Override
-    public List<Event> deserialize(ScanRecord record, TablePath tablePath) {
+    public List<Event> deserialize(FlussSourceRecord record, TablePath tablePath) {
         List<Event> events = new ArrayList<>();
         TableId tableId = TableId.tableId(tablePath.getDatabaseName(), tablePath.getTableName());
         RowType rowType = record.getRowType();
 
         boolean isSchemaChangeEvent = inferSchemaChangeEvent(events, record, tablePath, tableId);
-        InternalRow row = record.getRow();
-        ChangeType changeType = record.getChangeType();
+        InternalRow row = record.getScanRecord().getRow();
+        ChangeType changeType = record.getScanRecord().getChangeType();
 
         switch (changeType) {
             case APPEND_ONLY:
@@ -117,11 +118,11 @@ public class FlussRecordDeserializer implements FlussDeserializer<Event> {
     }
 
     private boolean inferSchemaChangeEvent(
-            List<Event> events, ScanRecord record, TablePath tablePath, TableId tableId) {
+            List<Event> events, FlussSourceRecord record, TablePath tablePath, TableId tableId) {
         // Detect schema changes for log records (schemaId >= 0).
         // Snapshot records have schemaId = -1 and are skipped.
         boolean inferSchemaChangeEvent = false;
-        int schemaId = record.getSchemaId();
+        int schemaId = record.getScanRecord().getSchemaId();
         RowType rowType = record.getRowType();
         org.apache.flink.cdc.common.types.RowType cdcRowType =
                 (org.apache.flink.cdc.common.types.RowType) FlussConversions.toCdcType(rowType);

@@ -21,6 +21,7 @@ import org.apache.flink.cdc.common.event.AddColumnEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceRecord;
 
 import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.metadata.TablePath;
@@ -68,16 +69,19 @@ class FlussRecordDeserializerTest {
     }
 
     /** Creates a log-phase ScanRecord with a valid schemaId and RowType. */
-    private static ScanRecord logRecord(int schemaId, RowType rowType, GenericRow row) {
-        return new ScanRecord(
-                TABLE_ID,
-                schemaId,
+    private static FlussSourceRecord logRecord(int schemaId, RowType rowType, GenericRow row) {
+        return new FlussSourceRecord(
+                new ScanRecord(
+                        TABLE_ID,
+                        schemaId,
+                        /* offset= */ 0L,
+                        System.currentTimeMillis(),
+                        ChangeType.INSERT,
+                        row,
+                        /* sizeInBytes= */ -1),
+                TABLE_PATH,
                 rowType,
-                /* offset= */ 0L,
-                System.currentTimeMillis(),
-                ChangeType.INSERT,
-                row,
-                /* sizeInBytes= */ -1);
+                1);
     }
 
     /** Creates a snapshot-phase ScanRecord (schemaId = -1, rowType = null). */

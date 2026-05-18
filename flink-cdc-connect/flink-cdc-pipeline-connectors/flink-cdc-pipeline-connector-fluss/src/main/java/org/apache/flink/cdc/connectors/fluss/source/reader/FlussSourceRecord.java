@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.fluss.source.reader;
 
+import org.apache.fluss.client.table.scanner.MultiTableRecord;
 import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.metadata.TablePath;
 import org.apache.fluss.types.RowType;
@@ -40,8 +41,12 @@ public class FlussSourceRecord {
     private final long readRecordsCount;
 
     /** Creates a log record (no snapshot position tracking). */
-    public FlussSourceRecord(ScanRecord scanRecord, TablePath tablePath, RowType rowType) {
-        this(scanRecord, tablePath, rowType, NO_READ_RECORDS_COUNT);
+    public FlussSourceRecord(MultiTableRecord multiTableRecord) {
+        this(
+                multiTableRecord.getScanRecord(),
+                multiTableRecord.getTablePath(),
+                multiTableRecord.getSchema().getRowType(),
+                NO_READ_RECORDS_COUNT);
     }
 
     /** Creates a snapshot record with the cumulative read count for recovery. */

@@ -78,10 +78,10 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
                 hybridState.setRecordsToSkip(element.getReadRecordsCount());
             }
             // Track schemaId for cache restoration on recovery
-            updateSchemaTracking(splitState, scanRecord);
-            emitRecords(scanRecord, element, output);
+            updateSchemaTracking(splitState, element);
+            emitRecords(element, output);
         } else if (splitState.isLogSplitState()) {
-            boolean emitted = emitRecords(scanRecord, element, output);
+            boolean emitted = emitRecords(element, output);
             // Only advance the offset in state if records were successfully emitted.
             // This ensures that if a crash occurs, the source will re-read the same log offset
             // upon recovery, allowing the deserializer to correctly reconstruct the state.
@@ -89,21 +89,20 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
                 splitState.asLogSplitState().setNextOffset(scanRecord.logOffset() + 1);
             }
             if (emitted) {
-                updateSchemaTracking(splitState, scanRecord);
+                updateSchemaTracking(splitState, element);
             }
         } else {
             LOG.warn("Unknown split state type: {}", splitState.getClass());
         }
     }
 
-    private boolean emitRecords(
-            ScanRecord scanRecord, FlussSourceRecord element, SourceOutput<T> output)
+    private boolean emitRecords(FlussSourceRecord element, SourceOutput<T> output)
             throws Exception {
-        List<T> records = deserializer.deserialize(scanRecord, element.getTablePath());
+        List<T> records = deserializer.deserialize(element, element.getTablePath());
 
         boolean emitted = false;
         for (T record : records) {
-            long timestamp = scanRecord.timestamp();
+            long timestamp = element.getScanRecord().timestamp();
             if (timestamp > 0) {
                 output.collect(record, timestamp);
             } else {
@@ -114,10 +113,10 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
         return emitted;
     }
 
-    private void updateSchemaTracking(FlussSplitState splitState, ScanRecord scanRecord) {
-        int schemaId = scanRecord.getSchemaId();
+    private void updateSchemaTracking(FlussSplitState splitState, FlussSourceRecord element) {
+        int schemaId = element.getScanRecord().getSchemaId();
         if (schemaId >= 0) {
-            splitState.updateSchema(schemaId, scanRecord.getRowType());
+            splitState.updateSchema(schemaId, element.getRowType());
         }
     }
 
