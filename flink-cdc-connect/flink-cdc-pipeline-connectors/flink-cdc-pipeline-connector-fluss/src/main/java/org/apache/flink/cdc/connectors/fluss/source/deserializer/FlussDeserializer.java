@@ -38,7 +38,7 @@ public interface FlussDeserializer<T> extends Serializable {
     /**
      * Deserializes a Fluss {@link ScanRecord} into a list of output records.
      *
-     * @param record The Fluss scan record to deserialize.
+     * @param element The Fluss scan record to deserialize.
      * @param tablePath The Fluss table path (database.table).
      * @return A list of deserialized output records.
      */

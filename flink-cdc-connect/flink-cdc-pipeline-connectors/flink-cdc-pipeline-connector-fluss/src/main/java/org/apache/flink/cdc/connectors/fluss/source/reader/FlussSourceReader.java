@@ -22,9 +22,12 @@ import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLog
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussLogSplitState;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitState;
+import org.apache.flink.cdc.source.SingleThreadFetcherManagerAdapter;
+import org.apache.flink.cdc.source.SingleThreadMultiplexSourceReaderBaseAdapter;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
-import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcherManager;
+import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +46,7 @@ import java.util.Map;
  * @param <T> The type of output records produced by this reader.
  */
 public class FlussSourceReader<T>
-        extends SingleThreadMultiplexSourceReaderBase<
+        extends SingleThreadMultiplexSourceReaderBaseAdapter<
                 FlussSourceRecord, T, FlussSplitBase, FlussSplitState> {
 
     private static final Logger LOG = LoggerFactory.getLogger(FlussSourceReader.class);
@@ -51,11 +54,14 @@ public class FlussSourceReader<T>
     private final FlussRecordEmitter<T> recordEmitter;
 
     public FlussSourceReader(
+            FutureCompletingBlockingQueue<RecordsWithSplitIds<FlussSourceRecord>> elementsQueue,
             SourceReaderContext readerContext,
             org.apache.fluss.config.Configuration flussConfig,
             FlussRecordEmitter<T> recordEmitter) {
         super(
-                new SingleThreadFetcherManager<>(() -> new FlussSplitReader(flussConfig)),
+                elementsQueue,
+                new SingleThreadFetcherManagerAdapter<FlussSourceRecord, FlussSplitBase>(
+                        elementsQueue, () -> new FlussSplitReader(flussConfig)),
                 recordEmitter,
                 new Configuration(),
                 readerContext);

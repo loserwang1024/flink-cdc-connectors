@@ -29,9 +29,12 @@ import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumSt
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumerator;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussRecordEmitter;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceReader;
+import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceRecord;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitSerializer;
 import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriber;
+import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
+import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import org.apache.fluss.client.initializer.OffsetsInitializer;
@@ -114,6 +117,8 @@ public class FlussSource<T> implements Source<T, FlussSplitBase, FlussSourceEnum
     @Override
     public SourceReader<T, FlussSplitBase> createReader(SourceReaderContext readerContext) {
         FlussRecordEmitter<T> recordEmitter = new FlussRecordEmitter<>(deserializer);
-        return new FlussSourceReader<>(readerContext, flussConfig, recordEmitter);
+        FutureCompletingBlockingQueue<RecordsWithSplitIds<FlussSourceRecord>> elementsQueue =
+                new FutureCompletingBlockingQueue<>();
+        return new FlussSourceReader<>(elementsQueue, readerContext, flussConfig, recordEmitter);
     }
 }
