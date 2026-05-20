@@ -20,9 +20,11 @@ package org.apache.flink.cdc.connectors.fluss.source.enumerator;
 import org.apache.flink.api.connector.source.ReaderInfo;
 import org.apache.flink.api.connector.source.SplitsAssignment;
 import org.apache.flink.api.connector.source.mocks.MockSplitEnumeratorContext;
+import org.apache.flink.cdc.common.configuration.Configuration;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
+import org.apache.flink.cdc.connectors.fluss.source.discover.FlussDefaultDiscoverer;
+import org.apache.flink.cdc.connectors.fluss.source.discover.FlussSubscriberTableDiscoverer;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussTableSubscriber;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.PatternSubscriber;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableEnvironment;
 
@@ -37,8 +39,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -48,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for {@link FlussSourceEnumerator} focusing on dynamic table discovery via both {@link
- * PatternSubscriber} and {@link FlussTableSubscriber}.
+ * FlussDefaultDiscoverer} and {@link FlussSubscriberTableDiscoverer}.
  *
  * <p>Each test drives the enumerator manually through one or more discovery cycles using {@link
  * MockSplitEnumeratorContext#runPeriodicCallable(int)} + {@link
@@ -95,12 +99,12 @@ class FlussSourceEnumeratorTest {
     }
 
     // =====================================================================
-    //  PatternSubscriber tests — regex-based matching and dynamic discovery
+    //  FlussDefaultDiscoverer tests — regex-based matching and dynamic discovery
     // =====================================================================
 
     /**
-     * Tests that {@link PatternSubscriber} only assigns tables whose fully-qualified name matches
-     * the supplied regex, and leaves non-matching tables completely unassigned.
+     * Tests that {@link FlussDefaultDiscoverer} only assigns tables whose fully-qualified name
+     * matches the supplied regex, and leaves non-matching tables completely unassigned.
      */
     @Test
     void testPatternSubscriberOnlyAssignsMatchingTables() throws Throwable {
@@ -111,11 +115,12 @@ class FlussSourceEnumeratorTest {
         createPkTable(tableB);
         createPkTable(tableOther);
 
-        PatternSubscriber subscriber = new PatternSubscriber(fqnRegex(DATABASE_NAME, "match_.*"));
+        FlussDefaultDiscoverer discoverer = new FlussDefaultDiscoverer();
+        String pattern = fqnRegex(DATABASE_NAME, "match_.*");
 
         try (MockSplitEnumeratorContext<FlussSplitBase> context =
                 new MockSplitEnumeratorContext<>(NUM_READERS)) {
-            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber);
+            FlussSourceEnumerator enumerator = newEnumerator(context, discoverer, pattern);
             try {
                 enumerator.start();
                 registerAllReaders(context, enumerator);
@@ -132,19 +137,20 @@ class FlussSourceEnumeratorTest {
     }
 
     /**
-     * Tests that {@link PatternSubscriber} discovers newly created tables matching the pattern on
-     * the next periodic discovery cycle, and emits splits only for the new tables.
+     * Tests that {@link FlussDefaultDiscoverer} discovers newly created tables matching the pattern
+     * on the next periodic discovery cycle, and emits splits only for the new tables.
      */
     @Test
     void testPatternSubscriberDiscoversNewTableDynamically() throws Throwable {
         String tableA = "dyn_a";
         createPkTable(tableA);
 
-        PatternSubscriber subscriber = new PatternSubscriber(fqnRegex(DATABASE_NAME, "dyn_.*"));
+        FlussDefaultDiscoverer discoverer = new FlussDefaultDiscoverer();
+        String pattern = fqnRegex(DATABASE_NAME, "dyn_.*");
 
         try (MockSplitEnumeratorContext<FlussSplitBase> context =
                 new MockSplitEnumeratorContext<>(NUM_READERS)) {
-            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber);
+            FlussSourceEnumerator enumerator = newEnumerator(context, discoverer, pattern);
             try {
                 enumerator.start();
                 registerAllReaders(context, enumerator);
@@ -186,11 +192,12 @@ class FlussSourceEnumeratorTest {
         createPkTable(tableA);
         createPkTable(tableB);
 
-        PatternSubscriber subscriber = new PatternSubscriber(fqnRegex(DATABASE_NAME, "rm_.*"));
+        FlussDefaultDiscoverer discoverer = new FlussDefaultDiscoverer();
+        String pattern = fqnRegex(DATABASE_NAME, "rm_.*");
 
         try (MockSplitEnumeratorContext<FlussSplitBase> context =
                 new MockSplitEnumeratorContext<>(NUM_READERS)) {
-            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber);
+            FlussSourceEnumerator enumerator = newEnumerator(context, discoverer, pattern);
             try {
                 enumerator.start();
                 registerAllReaders(context, enumerator);
@@ -221,8 +228,8 @@ class FlussSourceEnumeratorTest {
     // =====================================================================
 
     /**
-     * Tests that {@link FlussTableSubscriber} assigns exactly the tables initially seeded into the
-     * subscription table.
+     * Tests that {@link FlussSubscriberTableDiscoverer} assigns exactly the tables initially seeded
+     * into the subscription table.
      */
     @Test
     void testFlussTableSubscriberInitialDiscovery() throws Throwable {
@@ -232,12 +239,12 @@ class FlussSourceEnumeratorTest {
         createPkTable(targetA);
         insertSubscription(subscriptionTable, targetA);
 
-        FlussTableSubscriber subscriber =
-                new FlussTableSubscriber(DATABASE_NAME + "." + subscriptionTable, 100);
+        FlussSubscriberTableDiscoverer subscriber =
+                new FlussSubscriberTableDiscoverer(DATABASE_NAME + "." + subscriptionTable, 100);
 
         try (MockSplitEnumeratorContext<FlussSplitBase> context =
                 new MockSplitEnumeratorContext<>(NUM_READERS)) {
-            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber);
+            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber, null);
             try {
                 enumerator.start();
                 registerAllReaders(context, enumerator);
@@ -265,12 +272,12 @@ class FlussSourceEnumeratorTest {
         createPkTable(targetB);
         insertSubscription(subscriptionTable, targetA);
 
-        FlussTableSubscriber subscriber =
-                new FlussTableSubscriber(DATABASE_NAME + "." + subscriptionTable, 100);
+        FlussSubscriberTableDiscoverer subscriber =
+                new FlussSubscriberTableDiscoverer(DATABASE_NAME + "." + subscriptionTable, 100);
 
         try (MockSplitEnumeratorContext<FlussSplitBase> context =
                 new MockSplitEnumeratorContext<>(NUM_READERS)) {
-            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber);
+            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber, null);
             try {
                 enumerator.start();
                 registerAllReaders(context, enumerator);
@@ -312,12 +319,12 @@ class FlussSourceEnumeratorTest {
         insertSubscription(subscriptionTable, targetA);
         insertSubscription(subscriptionTable, targetB);
 
-        FlussTableSubscriber subscriber =
-                new FlussTableSubscriber(DATABASE_NAME + "." + subscriptionTable, 100);
+        FlussSubscriberTableDiscoverer subscriber =
+                new FlussSubscriberTableDiscoverer(DATABASE_NAME + "." + subscriptionTable, 100);
 
         try (MockSplitEnumeratorContext<FlussSplitBase> context =
                 new MockSplitEnumeratorContext<>(NUM_READERS)) {
-            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber);
+            FlussSourceEnumerator enumerator = newEnumerator(context, subscriber, null);
             try {
                 enumerator.start();
                 registerAllReaders(context, enumerator);
@@ -354,14 +361,43 @@ class FlussSourceEnumeratorTest {
 
     private FlussSourceEnumerator newEnumerator(
             MockSplitEnumeratorContext<FlussSplitBase> context,
-            org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriber subscriber) {
+            TableDiscoverer discoverer,
+            String pattern) {
+        org.apache.fluss.config.Configuration flussConfig =
+                FLUSS_CLUSTER_EXTENSION.getClientConfig();
+        Configuration sourceConfig = buildSourceConfig(flussConfig, pattern);
         return new FlussSourceEnumerator(
                 context,
-                subscriber,
-                FLUSS_CLUSTER_EXTENSION.getClientConfig(),
+                discoverer,
+                flussConfig,
+                sourceConfig,
                 OffsetsInitializer.earliest(),
                 DISCOVERY_INTERVAL_MS,
                 new HashSet<>());
+    }
+
+    private static Configuration buildSourceConfig(
+            org.apache.fluss.config.Configuration flussConfig, String pattern) {
+        Map<String, String> map = new HashMap<>();
+        String bootstrapServers =
+                flussConfig
+                        .toMap()
+                        .get(org.apache.fluss.config.ConfigOptions.BOOTSTRAP_SERVERS.key());
+        if (bootstrapServers != null) {
+            map.put("bootstrap.servers", bootstrapServers);
+        }
+        if (pattern != null) {
+            map.put("table.discoverer.pattern", pattern);
+        }
+        flussConfig
+                .toMap()
+                .forEach(
+                        (key, value) -> {
+                            if (key.startsWith("client.")) {
+                                map.put("properties." + key, value);
+                            }
+                        });
+        return Configuration.fromMap(map);
     }
 
     private static void registerAllReaders(

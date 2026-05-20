@@ -21,16 +21,15 @@ import org.apache.flink.cdc.common.configuration.ConfigOption;
 import org.apache.flink.cdc.common.factories.DataSourceFactory;
 import org.apache.flink.cdc.common.factories.FactoryHelper;
 import org.apache.flink.cdc.common.source.DataSource;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
+import org.apache.flink.cdc.common.source.discover.TableDiscovererFactory;
 import org.apache.flink.cdc.connectors.fluss.source.FlussDataSource;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriber;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriberFactory;
 
 import org.apache.fluss.client.initializer.OffsetsInitializer;
 import org.apache.fluss.config.ConfigOptions;
 import org.apache.fluss.config.Configuration;
 
 import java.util.HashSet;
-import java.util.ServiceLoader;
 import java.util.Set;
 
 import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.BOOTSTRAP_SERVERS;
@@ -38,8 +37,8 @@ import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOption
 import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.SCAN_DISCOVERY_INTERVAL;
 import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.SCAN_STARTUP_MODE;
 import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.SCAN_STARTUP_TIMESTAMP;
-import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX;
-import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.SUBSCRIBER_TYPE;
+import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX;
+import static org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions.TABLE_DISCOVERER_TYPE;
 
 /** Factory for creating configured instances of {@link FlussDataSource}. */
 public class FlussDataSourceFactory implements DataSourceFactory {
@@ -49,7 +48,7 @@ public class FlussDataSourceFactory implements DataSourceFactory {
     @Override
     public DataSource createDataSource(Context context) {
         FactoryHelper.createFactoryHelper(this, context)
-                .validateExcept(CLIENT_PROPERTIES_PREFIX, SUBSCRIBER_OPTIONS_PREFIX);
+                .validateExcept(CLIENT_PROPERTIES_PREFIX, TABLE_DISCOVERER_OPTIONS_PREFIX);
 
         org.apache.flink.cdc.common.configuration.Configuration factoryConfiguration =
                 context.getFactoryConfiguration();
@@ -58,8 +57,8 @@ public class FlussDataSourceFactory implements DataSourceFactory {
 
         Configuration flussConfig = toFlussClientConfig(factoryConfiguration);
 
-        FlussSubscriber subscriber =
-                createSubscriber(factoryConfiguration, context.getClassLoader());
+        TableDiscoverer discoverer =
+                createDiscoverer(factoryConfiguration, context.getClassLoader());
 
         OffsetsInitializer offsetsInitializer =
                 getOffsetsInitializer(startupMode, factoryConfiguration);
@@ -67,69 +66,22 @@ public class FlussDataSourceFactory implements DataSourceFactory {
         long scanDiscoveryIntervalMs = factoryConfiguration.get(SCAN_DISCOVERY_INTERVAL).toMillis();
 
         return new FlussDataSource(
-                flussConfig, subscriber, offsetsInitializer, scanDiscoveryIntervalMs);
+                flussConfig,
+                factoryConfiguration,
+                discoverer,
+                offsetsInitializer,
+                scanDiscoveryIntervalMs);
     }
 
     /**
-     * Discovers a {@link FlussSubscriberFactory} whose {@link FlussSubscriberFactory#identifier()}
-     * matches the value of {@code subscriber.type}, and delegates subscriber creation to it.
+     * Discovers a {@link TableDiscovererFactory} whose {@link TableDiscovererFactory#identifier()}
+     * matches the value of {@code table.discoverer.type}, and delegates discoverer creation to it.
      */
-    private static FlussSubscriber createSubscriber(
+    private static TableDiscoverer createDiscoverer(
             org.apache.flink.cdc.common.configuration.Configuration config,
             ClassLoader classLoader) {
-        String type = config.get(SUBSCRIBER_TYPE);
-        ClassLoader loader =
-                classLoader != null ? classLoader : Thread.currentThread().getContextClassLoader();
-        ServiceLoader<FlussSubscriberFactory> serviceLoader =
-                ServiceLoader.load(FlussSubscriberFactory.class, loader);
-
-        FlussSubscriberFactory matched = null;
-        Set<String> known = new HashSet<>();
-        for (FlussSubscriberFactory factory : serviceLoader) {
-            known.add(factory.identifier());
-            if (factory.identifier().equalsIgnoreCase(type)) {
-                if (matched != null) {
-                    throw new IllegalStateException(
-                            "Multiple FlussSubscriberFactory implementations found for identifier '"
-                                    + type
-                                    + "': "
-                                    + matched.getClass().getName()
-                                    + " and "
-                                    + factory.getClass().getName());
-                }
-                matched = factory;
-            }
-        }
-        if (matched == null) {
-            throw new IllegalArgumentException(
-                    "Unsupported '"
-                            + SUBSCRIBER_TYPE.key()
-                            + "' value: '"
-                            + type
-                            + "'. Available subscriber types: "
-                            + known
-                            + ".");
-        }
-        // Extract the 'subscriber.' sub-configuration so each factory only sees its own keys with
-        // the prefix stripped (e.g. 'subscriber.fluss.limit' -> 'fluss.limit').
-        return matched.create(extractSubConfig(config, SUBSCRIBER_OPTIONS_PREFIX));
-    }
-
-    /**
-     * Returns a new {@link org.apache.flink.cdc.common.configuration.Configuration} containing only
-     * the entries of {@code source} whose keys start with {@code prefix}, with {@code prefix}
-     * stripped from each key.
-     */
-    private static org.apache.flink.cdc.common.configuration.Configuration extractSubConfig(
-            org.apache.flink.cdc.common.configuration.Configuration source, String prefix) {
-        java.util.Map<String, String> sub = new java.util.HashMap<>();
-        for (java.util.Map.Entry<String, String> entry : source.toMap().entrySet()) {
-            String key = entry.getKey();
-            if (key.startsWith(prefix)) {
-                sub.put(key.substring(prefix.length()), entry.getValue());
-            }
-        }
-        return org.apache.flink.cdc.common.configuration.Configuration.fromMap(sub);
+        String type = config.get(TABLE_DISCOVERER_TYPE);
+        return TableDiscovererFactory.createDiscoverer(type, classLoader);
     }
 
     @Override
@@ -147,7 +99,7 @@ public class FlussDataSourceFactory implements DataSourceFactory {
     @Override
     public Set<ConfigOption<?>> optionalOptions() {
         Set<ConfigOption<?>> options = new HashSet<>();
-        options.add(SUBSCRIBER_TYPE);
+        options.add(TABLE_DISCOVERER_TYPE);
         options.add(SCAN_STARTUP_MODE);
         options.add(SCAN_STARTUP_TIMESTAMP);
         options.add(SCAN_DISCOVERY_INTERVAL);

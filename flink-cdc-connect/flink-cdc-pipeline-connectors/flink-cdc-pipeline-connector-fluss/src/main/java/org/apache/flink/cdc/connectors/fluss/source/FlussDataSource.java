@@ -22,8 +22,8 @@ import org.apache.flink.cdc.common.source.DataSource;
 import org.apache.flink.cdc.common.source.EventSourceProvider;
 import org.apache.flink.cdc.common.source.FlinkSourceProvider;
 import org.apache.flink.cdc.common.source.MetadataAccessor;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
 import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussRecordDeserializer;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriber;
 
 import org.apache.fluss.client.initializer.OffsetsInitializer;
 import org.apache.fluss.config.Configuration;
@@ -36,17 +36,20 @@ import org.apache.fluss.config.Configuration;
 public class FlussDataSource implements DataSource {
 
     private final Configuration flussConfig;
-    private final FlussSubscriber subscriber;
+    private final org.apache.flink.cdc.common.configuration.Configuration sourceConfig;
+    private final TableDiscoverer discoverer;
     private final OffsetsInitializer offsetsInitializer;
     private final long scanDiscoveryIntervalMs;
 
     public FlussDataSource(
             Configuration flussConfig,
-            FlussSubscriber subscriber,
+            org.apache.flink.cdc.common.configuration.Configuration sourceConfig,
+            TableDiscoverer discoverer,
             OffsetsInitializer offsetsInitializer,
             long scanDiscoveryIntervalMs) {
         this.flussConfig = flussConfig;
-        this.subscriber = subscriber;
+        this.sourceConfig = sourceConfig;
+        this.discoverer = discoverer;
         this.offsetsInitializer = offsetsInitializer;
         this.scanDiscoveryIntervalMs = scanDiscoveryIntervalMs;
     }
@@ -55,8 +58,9 @@ public class FlussDataSource implements DataSource {
     public EventSourceProvider getEventSourceProvider() {
         return FlinkSourceProvider.of(
                 new FlussSource<>(
-                        subscriber,
+                        discoverer,
                         flussConfig,
+                        sourceConfig,
                         offsetsInitializer,
                         scanDiscoveryIntervalMs,
                         new FlussRecordDeserializer()));

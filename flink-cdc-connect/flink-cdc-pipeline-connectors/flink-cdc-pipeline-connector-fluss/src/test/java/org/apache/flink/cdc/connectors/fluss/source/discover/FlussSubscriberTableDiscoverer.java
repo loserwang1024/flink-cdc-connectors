@@ -15,9 +15,13 @@
  * limitations under the License.
  */
 
-package org.apache.flink.cdc.connectors.fluss.source.subscriber;
+package org.apache.flink.cdc.connectors.fluss.source.discover;
+
+import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
 
 import org.apache.fluss.client.Connection;
+import org.apache.fluss.client.ConnectionFactory;
 import org.apache.fluss.client.table.Table;
 import org.apache.fluss.client.table.scanner.batch.BatchScanUtils;
 import org.apache.fluss.client.table.scanner.batch.BatchScanner;
@@ -36,8 +40,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * A {@link FlussSubscriber} that reads the list of subscribed tables from a Fluss <b>primary-key
- * table</b> using a bounded {@code LIMIT} batch scan (no log subscription).
+ * A test-only {@link TableDiscoverer} that reads the list of subscribed tables from a Fluss
+ * <b>primary-key table</b> using a bounded {@code LIMIT} batch scan (no log subscription).
  *
  * <p><b>Expected schema:</b> the subscription table must place the fully-qualified table name
  * (formatted as {@code "database.tableName"}) in its <b>first column</b>. For example:
@@ -53,11 +57,11 @@ import java.util.Set;
  * every bucket of the subscription table and collects the rows via {@link
  * BatchScanUtils#collectAllRows(List)}. At most {@code limit} rows per bucket are returned.
  */
-public class FlussTableSubscriber implements FlussSubscriber {
+public class FlussSubscriberTableDiscoverer implements TableDiscoverer {
 
     private static final long serialVersionUID = 1L;
 
-    private static final Logger LOG = LoggerFactory.getLogger(FlussTableSubscriber.class);
+    private static final Logger LOG = LoggerFactory.getLogger(FlussSubscriberTableDiscoverer.class);
 
     /** The fully-qualified path of the subscription table, e.g. {@code "meta_db.subscription"}. */
     private final TablePath subscriptionTablePath;
@@ -65,7 +69,9 @@ public class FlussTableSubscriber implements FlussSubscriber {
     /** Maximum number of rows per bucket to read from the subscription table. */
     private final int limit;
 
-    private FlussTableSubscriber(TablePath subscriptionTablePath, int limit) {
+    private transient Connection connection;
+
+    private FlussSubscriberTableDiscoverer(TablePath subscriptionTablePath, int limit) {
         if (limit <= 0) {
             throw new IllegalArgumentException(
                     "FlussTableSubscriber limit must be positive, got " + limit);
@@ -74,13 +80,34 @@ public class FlussTableSubscriber implements FlussSubscriber {
         this.limit = limit;
     }
 
-    public FlussTableSubscriber(String fullyQualifiedTableName, int limit) {
+    public FlussSubscriberTableDiscoverer(String fullyQualifiedTableName, int limit) {
         this(parseTablePath(fullyQualifiedTableName), limit);
     }
 
     @Override
-    public Set<TablePath> getSubscribedTablePaths(Connection connection) throws Exception {
-        Set<TablePath> result = new LinkedHashSet<>();
+    public void open(Context context) throws Exception {
+        org.apache.flink.cdc.common.configuration.Configuration config = context.getConfiguration();
+        String bootstrapServers =
+                config.get(
+                        org.apache.flink.cdc.common.configuration.ConfigOptions.key(
+                                        "bootstrap.servers")
+                                .stringType()
+                                .noDefaultValue()
+                                .withDescription("Fluss bootstrap servers."));
+        if (bootstrapServers == null || bootstrapServers.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "'bootstrap.servers' is required for FlussTableSubscriber.");
+        }
+        org.apache.fluss.config.Configuration flussConfig =
+                new org.apache.fluss.config.Configuration();
+        flussConfig.setString(
+                org.apache.fluss.config.ConfigOptions.BOOTSTRAP_SERVERS.key(), bootstrapServers);
+        connection = ConnectionFactory.createConnection(flussConfig);
+    }
+
+    @Override
+    public Set<TableId> discover() throws Exception {
+        Set<TableId> result = new LinkedHashSet<>();
         try (Table table = connection.getTable(subscriptionTablePath)) {
             TableInfo tableInfo = table.getTableInfo();
             validateSchema(tableInfo.getRowType());
@@ -100,7 +127,8 @@ public class FlussTableSubscriber implements FlussSubscriber {
                     if (row == null || row.isNullAt(0)) {
                         continue;
                     }
-                    TablePath parsed = safeParseTablePath(row.getString(0).toString());
+                    String fqn = row.getString(0).toString();
+                    TableId parsed = safeParseTableId(fqn);
                     if (parsed != null) {
                         result.add(parsed);
                     }
@@ -124,6 +152,13 @@ public class FlussTableSubscriber implements FlussSubscriber {
                 subscriptionTablePath,
                 limit);
         return result;
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (connection != null) {
+            connection.close();
+        }
     }
 
     public TablePath getSubscriptionTablePath() {
@@ -165,7 +200,7 @@ public class FlussTableSubscriber implements FlussSubscriber {
     }
 
     private static TablePath parseTablePath(String fqn) {
-        TablePath parsed = safeParseTablePath(fqn);
+        TablePath parsed = safeParseFlussTablePath(fqn);
         if (parsed == null) {
             throw new IllegalArgumentException(
                     "Invalid fully-qualified table name '"
@@ -175,7 +210,7 @@ public class FlussTableSubscriber implements FlussSubscriber {
         return parsed;
     }
 
-    private static TablePath safeParseTablePath(String fqn) {
+    private static TablePath safeParseFlussTablePath(String fqn) {
         if (fqn == null) {
             return null;
         }
@@ -184,5 +219,16 @@ public class FlussTableSubscriber implements FlussSubscriber {
             return null;
         }
         return new TablePath(fqn.substring(0, dot), fqn.substring(dot + 1));
+    }
+
+    private static TableId safeParseTableId(String fqn) {
+        if (fqn == null) {
+            return null;
+        }
+        int dot = fqn.indexOf('.');
+        if (dot <= 0 || dot == fqn.length() - 1) {
+            return null;
+        }
+        return TableId.tableId(fqn.substring(0, dot), fqn.substring(dot + 1));
     }
 }

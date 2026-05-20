@@ -18,17 +18,19 @@
 package org.apache.flink.cdc.connectors.fluss.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.AddColumnEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
 import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussRecordDeserializer;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussTableSubscriber;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.PatternSubscriber;
+import org.apache.flink.cdc.connectors.fluss.source.discover.FlussDefaultDiscoverer;
+import org.apache.flink.cdc.connectors.fluss.source.discover.FlussSubscriberTableDiscoverer;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.core.execution.SavepointFormatType;
@@ -54,10 +56,13 @@ import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -658,7 +663,6 @@ public class FlussSourceITCase {
         FlussSource<Event> source =
                 createFlussSourceWithTableSubscriber(
                         DATABASE_NAME + "." + subscriptionTable,
-                        100,
                         "earliest",
                         Duration.ofSeconds(10));
 
@@ -864,51 +868,52 @@ public class FlussSourceITCase {
             String database, String tablePattern, long timestampMs) {
         org.apache.fluss.config.Configuration flussConfig =
                 FLUSS_CLUSTER_EXTENSION.getClientConfig();
-        PatternSubscriber subscriber = new PatternSubscriber(toFqnRegex(database, tablePattern));
+        FlussDefaultDiscoverer discoverer = new FlussDefaultDiscoverer();
+        Configuration sourceConfig =
+                buildSourceConfig(flussConfig, toFqnRegex(database, tablePattern));
         OffsetsInitializer offsetsInitializer = OffsetsInitializer.timestamp(timestampMs);
         return new FlussSource<>(
-                subscriber,
+                discoverer,
                 flussConfig,
+                sourceConfig,
                 offsetsInitializer,
                 Duration.ofMinutes(1).toMillis(),
                 new FlussRecordDeserializer());
     }
 
     private FlussSource<Event> createFlussSourceWithTableSubscriber(
-            String subscriptionTableFqn,
-            int limit,
-            String startupMode,
-            Duration discoveryInterval) {
-        org.apache.fluss.config.Configuration flussConfig =
-                FLUSS_CLUSTER_EXTENSION.getClientConfig();
-        FlussTableSubscriber subscriber = new FlussTableSubscriber(subscriptionTableFqn, limit);
-        OffsetsInitializer offsetsInitializer;
-        switch (startupMode) {
-            case "earliest":
-                offsetsInitializer = OffsetsInitializer.earliest();
-                break;
-            case "latest":
-                offsetsInitializer = OffsetsInitializer.latest();
-                break;
-            case "full":
-                offsetsInitializer = OffsetsInitializer.full();
-                break;
-            default:
-                throw new IllegalArgumentException("Unknown startup mode: " + startupMode);
-        }
-        return new FlussSource<>(
-                subscriber,
-                flussConfig,
-                offsetsInitializer,
-                discoveryInterval.toMillis(),
-                new FlussRecordDeserializer());
+            String subscriptionTableFqn, String startupMode, Duration discoveryInterval) {
+        return createFlussSourceWithDiscoveryInterval(
+                null,
+                null,
+                startupMode,
+                discoveryInterval,
+                new FlussSubscriberTableDiscoverer(subscriptionTableFqn, 100));
     }
 
     private FlussSource<Event> createFlussSourceWithDiscoveryInterval(
             String database, String tablePattern, String startupMode, Duration discoveryInterval) {
+        return createFlussSourceWithDiscoveryInterval(
+                database,
+                tablePattern,
+                startupMode,
+                discoveryInterval,
+                new FlussDefaultDiscoverer());
+    }
+
+    private FlussSource<Event> createFlussSourceWithDiscoveryInterval(
+            @Nullable String database,
+            @Nullable String tablePattern,
+            String startupMode,
+            Duration discoveryInterval,
+            TableDiscoverer tableDiscoverer) {
         org.apache.fluss.config.Configuration flussConfig =
                 FLUSS_CLUSTER_EXTENSION.getClientConfig();
-        PatternSubscriber subscriber = new PatternSubscriber(toFqnRegex(database, tablePattern));
+        String pattern =
+                (database == null || tablePattern == null)
+                        ? null
+                        : toFqnRegex(database, tablePattern);
+        Configuration sourceConfig = buildSourceConfig(flussConfig, pattern);
         OffsetsInitializer offsetsInitializer;
         switch (startupMode) {
             case "earliest":
@@ -924,8 +929,9 @@ public class FlussSourceITCase {
                 throw new IllegalArgumentException("Unknown startup mode: " + startupMode);
         }
         return new FlussSource<>(
-                subscriber,
+                tableDiscoverer,
                 flussConfig,
+                sourceConfig,
                 offsetsInitializer,
                 discoveryInterval.toMillis(),
                 new FlussRecordDeserializer());
@@ -938,6 +944,36 @@ public class FlussSourceITCase {
      */
     private static String toFqnRegex(String database, String tablePattern) {
         return java.util.regex.Pattern.quote(database) + "\\." + tablePattern.replace("*", ".*");
+    }
+
+    /**
+     * Builds a source {@link Configuration} for use with {@link
+     * TableDiscoverer#open(TableDiscoverer.Context)}. Includes bootstrap.servers and optionally the
+     * table.discoverer.pattern.
+     */
+    private static Configuration buildSourceConfig(
+            org.apache.fluss.config.Configuration flussConfig, String pattern) {
+        Map<String, String> map = new HashMap<>();
+        String bootstrapServers =
+                flussConfig
+                        .toMap()
+                        .get(org.apache.fluss.config.ConfigOptions.BOOTSTRAP_SERVERS.key());
+        if (bootstrapServers != null) {
+            map.put("bootstrap.servers", bootstrapServers);
+        }
+        if (pattern != null) {
+            map.put("table.discoverer.pattern", pattern);
+        }
+        // Copy client.* properties
+        flussConfig
+                .toMap()
+                .forEach(
+                        (key, value) -> {
+                            if (key.startsWith("client.")) {
+                                map.put("properties." + key, value);
+                            }
+                        });
+        return Configuration.fromMap(map);
     }
 
     /**

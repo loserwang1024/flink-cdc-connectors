@@ -23,6 +23,8 @@ import org.apache.flink.api.connector.source.SourceReader;
 import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
+import org.apache.flink.cdc.common.configuration.Configuration;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
 import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussDeserializer;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumState;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumStateSerializer;
@@ -32,13 +34,11 @@ import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceReader;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceRecord;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitSerializer;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriber;
 import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import org.apache.fluss.client.initializer.OffsetsInitializer;
-import org.apache.fluss.config.Configuration;
 
 import java.util.HashSet;
 
@@ -56,20 +56,23 @@ public class FlussSource<T> implements Source<T, FlussSplitBase, FlussSourceEnum
 
     private static final long serialVersionUID = 1L;
 
-    private final FlussSubscriber subscriber;
-    private final Configuration flussConfig;
+    private final TableDiscoverer discoverer;
+    private final org.apache.fluss.config.Configuration flussConfig;
+    private final Configuration sourceConfig;
     private final OffsetsInitializer offsetsInitializer;
     private final long scanDiscoveryIntervalMs;
     private final FlussDeserializer<T> deserializer;
 
     public FlussSource(
-            FlussSubscriber subscriber,
-            Configuration flussConfig,
+            TableDiscoverer discoverer,
+            org.apache.fluss.config.Configuration flussConfig,
+            Configuration sourceConfig,
             OffsetsInitializer offsetsInitializer,
             long scanDiscoveryIntervalMs,
             FlussDeserializer<T> deserializer) {
-        this.subscriber = subscriber;
+        this.discoverer = discoverer;
         this.flussConfig = flussConfig;
+        this.sourceConfig = sourceConfig;
         this.offsetsInitializer = offsetsInitializer;
         this.scanDiscoveryIntervalMs = scanDiscoveryIntervalMs;
         this.deserializer = deserializer;
@@ -85,8 +88,9 @@ public class FlussSource<T> implements Source<T, FlussSplitBase, FlussSourceEnum
             SplitEnumeratorContext<FlussSplitBase> enumContext) {
         return new FlussSourceEnumerator(
                 enumContext,
-                subscriber,
+                discoverer,
                 flussConfig,
+                sourceConfig,
                 offsetsInitializer,
                 scanDiscoveryIntervalMs,
                 new HashSet<>());
@@ -97,8 +101,9 @@ public class FlussSource<T> implements Source<T, FlussSplitBase, FlussSourceEnum
             SplitEnumeratorContext<FlussSplitBase> enumContext, FlussSourceEnumState checkpoint) {
         return new FlussSourceEnumerator(
                 enumContext,
-                subscriber,
+                discoverer,
                 flussConfig,
+                sourceConfig,
                 offsetsInitializer,
                 scanDiscoveryIntervalMs,
                 checkpoint);

@@ -24,8 +24,6 @@ import org.apache.flink.cdc.common.source.DataSource;
 import org.apache.flink.cdc.composer.utils.FactoryDiscoveryUtils;
 import org.apache.flink.cdc.connectors.fluss.source.FlussDataSource;
 import org.apache.flink.cdc.connectors.fluss.source.FlussDataSourceOptions;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussTableSubscriberFactory;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.PatternSubscriberFactory;
 import org.apache.flink.table.api.ValidationException;
 
 import org.apache.flink.shaded.guava31.com.google.common.collect.ImmutableMap;
@@ -63,10 +61,12 @@ class FlussDataSourceFactoryTest {
                                 .put(
                                         FlussDataSourceOptions.BOOTSTRAP_SERVERS.key(),
                                         "localhost:9123")
-                                .put(FlussDataSourceOptions.SUBSCRIBER_TYPE.key(), "pattern")
                                 .put(
-                                        FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX
-                                                + PatternSubscriberFactory.PATTERN.key(),
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_TYPE.key(),
+                                        "fluss-default")
+                                .put(
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX
+                                                + "pattern",
                                         "test_db\\.orders_.*")
                                 .put(FlussDataSourceOptions.SCAN_STARTUP_MODE.key(), "latest")
                                 .build());
@@ -79,7 +79,7 @@ class FlussDataSourceFactoryTest {
     }
 
     @Test
-    void testCreateDataSourceWithFlussSubscriber() {
+    void testCreateDataSourceWithJdbcDiscoverer() {
         DataSourceFactory sourceFactory =
                 FactoryDiscoveryUtils.getFactoryByIdentifier("fluss", DataSourceFactory.class);
 
@@ -89,11 +89,15 @@ class FlussDataSourceFactoryTest {
                                 .put(
                                         FlussDataSourceOptions.BOOTSTRAP_SERVERS.key(),
                                         "localhost:9123")
-                                .put(FlussDataSourceOptions.SUBSCRIBER_TYPE.key(), "fluss")
+                                .put(FlussDataSourceOptions.TABLE_DISCOVERER_TYPE.key(), "jdbc")
                                 .put(
-                                        FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX
-                                                + FlussTableSubscriberFactory.FLUSS.key(),
-                                        "meta_db.subscription_list")
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX
+                                                + "jdbc-url",
+                                        "jdbc:mysql://localhost:3306/meta_db")
+                                .put(
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX
+                                                + "table-name",
+                                        "subscription_list")
                                 .build());
 
         DataSource dataSource =
@@ -116,8 +120,8 @@ class FlussDataSourceFactoryTest {
                                         FlussDataSourceOptions.BOOTSTRAP_SERVERS.key(),
                                         "localhost:9123")
                                 .put(
-                                        FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX
-                                                + PatternSubscriberFactory.PATTERN.key(),
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX
+                                                + "pattern",
                                         "test_db\\..*")
                                 .put("unsupported_key", "unsupported_value")
                                 .build());
@@ -146,8 +150,8 @@ class FlussDataSourceFactoryTest {
                 Configuration.fromMap(
                         ImmutableMap.<String, String>builder()
                                 .put(
-                                        FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX
-                                                + PatternSubscriberFactory.PATTERN.key(),
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX
+                                                + "pattern",
                                         "test_db\\..*")
                                 .build());
 
@@ -163,17 +167,19 @@ class FlussDataSourceFactoryTest {
     }
 
     @Test
-    void testMissingSubscriberPattern() {
+    void testUnsupportedDiscovererType() {
         DataSourceFactory sourceFactory =
                 FactoryDiscoveryUtils.getFactoryByIdentifier("fluss", DataSourceFactory.class);
 
-        // Has bootstrap.servers but no subscriber.pattern (default subscriber.type is 'pattern')
         Configuration conf =
                 Configuration.fromMap(
                         ImmutableMap.<String, String>builder()
                                 .put(
                                         FlussDataSourceOptions.BOOTSTRAP_SERVERS.key(),
                                         "localhost:9123")
+                                .put(
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_TYPE.key(),
+                                        "unknown-type")
                                 .build());
 
         assertThatThrownBy(
@@ -184,7 +190,7 @@ class FlussDataSourceFactoryTest {
                                                 conf,
                                                 Thread.currentThread().getContextClassLoader())))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("subscriber.pattern");
+                .hasMessageContaining("Unsupported 'table.discoverer.type' value: 'unknown-type'");
     }
 
     @Test
@@ -199,8 +205,8 @@ class FlussDataSourceFactoryTest {
                                         FlussDataSourceOptions.BOOTSTRAP_SERVERS.key(),
                                         "localhost:9123")
                                 .put(
-                                        FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX
-                                                + PatternSubscriberFactory.PATTERN.key(),
+                                        FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX
+                                                + "pattern",
                                         "test_db\\..*")
                                 .put("properties.client.request.timeout.ms", "5000")
                                 .put("properties.client.id", "my-client")
@@ -225,8 +231,7 @@ class FlussDataSourceFactoryTest {
                 ImmutableMap.<String, String>builder()
                         .put(FlussDataSourceOptions.BOOTSTRAP_SERVERS.key(), "localhost:9123")
                         .put(
-                                FlussDataSourceOptions.SUBSCRIBER_OPTIONS_PREFIX
-                                        + PatternSubscriberFactory.PATTERN.key(),
+                                FlussDataSourceOptions.TABLE_DISCOVERER_OPTIONS_PREFIX + "pattern",
                                 "test_db\\..*")
                         .build());
     }

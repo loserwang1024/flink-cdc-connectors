@@ -19,6 +19,7 @@ package org.apache.flink.cdc.connectors.fluss.source;
 
 import org.apache.flink.cdc.common.configuration.ConfigOption;
 import org.apache.flink.cdc.common.configuration.ConfigOptions;
+import org.apache.flink.cdc.common.source.discover.TableDiscovererFactory;
 
 import java.time.Duration;
 
@@ -34,24 +35,24 @@ public class FlussDataSourceOptions {
                     .withDescription("The bootstrap servers for the Fluss source connection.");
 
     /**
-     * Prefix shared by all {@code subscriber.*} keys. {@code FlussDataSourceFactory} excludes this
-     * prefix from strict option validation so that each {@link
-     * org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriberFactory}
+     * Prefix shared by all {@code table.discoverer.*} keys. {@code FlussDataSourceFactory} excludes
+     * this prefix from strict option validation so that each {@link TableDiscovererFactory}
      * implementation is free to declare its own namespaced options (e.g. {@code
-     * subscriber.pattern}, {@code subscriber.fluss}) without being enumerated here.
+     * table.discoverer.pattern}, {@code table.discoverer.jdbc.url}) without being enumerated here.
      */
-    public static final String SUBSCRIBER_OPTIONS_PREFIX = "subscriber.";
+    public static final String TABLE_DISCOVERER_OPTIONS_PREFIX = "table.discoverer.";
 
-    public static final ConfigOption<String> SUBSCRIBER_TYPE =
-            ConfigOptions.key("subscriber.type")
+    public static final ConfigOption<String> TABLE_DISCOVERER_TYPE =
+            ConfigOptions.key("table.discoverer.type")
                     .stringType()
-                    .defaultValue("pattern")
+                    .defaultValue("fluss-default")
                     .withDescription(
-                            "The subscriber type that decides which Fluss tables to read. The value "
+                            "The discoverer type that decides which tables to read. The value "
                                     + "is matched against the identifier of a registered "
-                                    + "FlussSubscriberFactory (loaded via Java SPI). Built-in values: "
-                                    + "'pattern' (default; reads its config from 'subscriber.pattern') "
-                                    + "and 'fluss' (reads its config from 'subscriber.fluss').");
+                                    + "TableDiscovererFactory (loaded via Java SPI). Built-in values: "
+                                    + "'fluss-default' (default; reads its config from "
+                                    + "'table.discoverer.pattern') and 'jdbc' (reads its config from "
+                                    + "'table.discoverer.jdbc.url', etc.).");
 
     public static final ConfigOption<String> SCAN_STARTUP_MODE =
             ConfigOptions.key("scan.startup.mode")

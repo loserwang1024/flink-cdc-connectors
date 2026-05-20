@@ -20,10 +20,14 @@ package org.apache.flink.cdc.connectors.fluss.source.enumerator;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.api.connector.source.SplitsAssignment;
+import org.apache.flink.cdc.common.configuration.Configuration;
+import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
+import org.apache.flink.cdc.common.source.discover.TableDiscovererFactory;
+import org.apache.flink.cdc.connectors.fluss.source.discover.FlussDefaultDiscoverer;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLogSplit;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussLogSplit;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
-import org.apache.flink.cdc.connectors.fluss.source.subscriber.FlussSubscriber;
 
 import org.apache.fluss.client.Connection;
 import org.apache.fluss.client.ConnectionFactory;
@@ -32,7 +36,6 @@ import org.apache.fluss.client.initializer.BucketOffsetsRetrieverImpl;
 import org.apache.fluss.client.initializer.OffsetsInitializer;
 import org.apache.fluss.client.initializer.SnapshotOffsetsInitializer;
 import org.apache.fluss.client.metadata.KvSnapshots;
-import org.apache.fluss.config.Configuration;
 import org.apache.fluss.metadata.PartitionInfo;
 import org.apache.fluss.metadata.PhysicalTablePath;
 import org.apache.fluss.metadata.TableBucket;
@@ -57,7 +60,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * The enumerator for Fluss source. It discovers tables using {@link FlussSubscriber}, queries their
+ * The enumerator for Fluss source. It discovers tables using {@link TableDiscoverer}, queries their
  * metadata (schema, bucket count, partitions), and generates {@link FlussSplitBase}s for each
  * table-bucket pair, assigning them to readers in a round-robin fashion.
  *
@@ -86,8 +89,9 @@ public class FlussSourceEnumerator
     private static final Logger LOG = LoggerFactory.getLogger(FlussSourceEnumerator.class);
 
     private final SplitEnumeratorContext<FlussSplitBase> context;
-    private final FlussSubscriber subscriber;
-    private final Configuration flussConfig;
+    private final TableDiscoverer discoverer;
+    private final org.apache.fluss.config.Configuration flussConfig;
+    private final Configuration sourceConfig;
     private final OffsetsInitializer offsetsInitializer;
     private final long scanDiscoveryIntervalMs;
 
@@ -99,14 +103,16 @@ public class FlussSourceEnumerator
 
     public FlussSourceEnumerator(
             SplitEnumeratorContext<FlussSplitBase> context,
-            FlussSubscriber subscriber,
-            Configuration flussConfig,
+            TableDiscoverer discoverer,
+            org.apache.fluss.config.Configuration flussConfig,
+            Configuration sourceConfig,
             OffsetsInitializer offsetsInitializer,
             long scanDiscoveryIntervalMs,
             Set<PhysicalTablePath> assignedPhysicalTablePaths) {
         this.context = context;
-        this.subscriber = subscriber;
+        this.discoverer = discoverer;
         this.flussConfig = flussConfig;
+        this.sourceConfig = sourceConfig;
         this.offsetsInitializer = offsetsInitializer;
         this.scanDiscoveryIntervalMs = scanDiscoveryIntervalMs;
         this.assignedPhysicalTablePaths = assignedPhysicalTablePaths;
@@ -115,15 +121,17 @@ public class FlussSourceEnumerator
 
     public FlussSourceEnumerator(
             SplitEnumeratorContext<FlussSplitBase> context,
-            FlussSubscriber subscriber,
-            Configuration flussConfig,
+            TableDiscoverer discoverer,
+            org.apache.fluss.config.Configuration flussConfig,
+            Configuration sourceConfig,
             OffsetsInitializer offsetsInitializer,
             long scanDiscoveryIntervalMs,
             FlussSourceEnumState restoredState) {
         this(
                 context,
-                subscriber,
+                discoverer,
                 flussConfig,
+                sourceConfig,
                 offsetsInitializer,
                 scanDiscoveryIntervalMs,
                 restoredState.getAssignedPhysicalTablePaths());
@@ -134,6 +142,16 @@ public class FlussSourceEnumerator
         LOG.info("Starting Fluss source enumerator.");
         connection = ConnectionFactory.createConnection(flussConfig);
         admin = connection.getAdmin();
+
+        // Open the discoverer with the full source configuration
+        try {
+            discoverer.open(
+                    TableDiscovererFactory.createContext(
+                            sourceConfig, Thread.currentThread().getContextClassLoader()));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to open TableDiscoverer", e);
+        }
+
         if (scanDiscoveryIntervalMs > 0) {
             LOG.info(
                     "Starting the FlussSourceEnumerator with discovery interval of {} ms.",
@@ -154,7 +172,7 @@ public class FlussSourceEnumerator
     // -------------------------------------------------------------------------
 
     /**
-     * Discovers all subscribed tables via the {@link FlussSubscriber}, then queries their metadata
+     * Discovers all subscribed tables via the {@link TableDiscoverer}, then queries their metadata
      * (bucket count, partitions) and enumerates every individual table-bucket. For partitioned
      * tables, each partition contributes its own set of buckets.
      *
@@ -162,7 +180,11 @@ public class FlussSourceEnumerator
      */
     private List<TableBucketInfo> getSubscribedTableBuckets() throws Exception {
         List<TableBucketInfo> allBuckets = new ArrayList<>();
-        Set<TablePath> subscribedPaths = subscriber.getSubscribedTablePaths(connection);
+        Set<TableId> discoveredTableIds = discoverer.discover();
+        Set<TablePath> subscribedPaths =
+                discoveredTableIds.stream()
+                        .map(FlussDefaultDiscoverer::toTablePath)
+                        .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
 
         for (TablePath tablePath : subscribedPaths) {
             TableInfo tableInfo = admin.getTableInfo(tablePath).get();
@@ -483,6 +505,9 @@ public class FlussSourceEnumerator
     @Override
     public void close() throws IOException {
         try {
+            if (discoverer != null) {
+                discoverer.close();
+            }
             if (admin != null) {
                 admin.close();
             }
@@ -494,9 +519,32 @@ public class FlussSourceEnumerator
         }
     }
 
-    // -------------------------------------------------------------------------
-    //  Inner class
-    // -------------------------------------------------------------------------
+    /**
+     * Converts a Fluss {@link org.apache.fluss.config.Configuration} to a flink-cdc-common {@link
+     * Configuration} by copying all key-value pairs. Used as a fallback when no explicit source
+     * config is provided.
+     */
+    static Configuration toSourceConfig(org.apache.fluss.config.Configuration flussConfig) {
+        Map<String, String> map = new HashMap<>();
+        // Extract bootstrap.servers from fluss config
+        String bootstrapServers =
+                flussConfig
+                        .toMap()
+                        .get(org.apache.fluss.config.ConfigOptions.BOOTSTRAP_SERVERS.key());
+        if (bootstrapServers != null) {
+            map.put("bootstrap.servers", bootstrapServers);
+        }
+        // Copy all client.* properties as properties.client.*
+        flussConfig
+                .toMap()
+                .forEach(
+                        (key, value) -> {
+                            if (key.startsWith("client.")) {
+                                map.put("properties." + key, value);
+                            }
+                        });
+        return Configuration.fromMap(map);
+    }
 
     /** Container for a discovered table-bucket with its {@link PhysicalTablePath}. */
     private static class TableBucketInfo {
