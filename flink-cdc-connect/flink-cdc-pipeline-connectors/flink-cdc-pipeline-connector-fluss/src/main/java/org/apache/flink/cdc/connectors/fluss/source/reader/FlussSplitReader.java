@@ -17,6 +17,8 @@
 
 package org.apache.flink.cdc.connectors.fluss.source.reader;
 
+import org.apache.flink.cdc.connectors.fluss.sink.v2.metrics.WrapperFlussMetricRegistry;
+import org.apache.flink.cdc.connectors.fluss.source.metrics.FlussSourceReaderMetrics;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLogSplit;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSnapshotSplit;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
@@ -71,6 +73,8 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
     private static final Duration BATCH_POLL_TIMEOUT = Duration.ofMillis(10000L);
 
     private final Configuration flussConfig;
+    private final WrapperFlussMetricRegistry metricRegistry;
+    private final FlussSourceReaderMetrics sourceReaderMetrics;
     private Connection connection;
     private final Map<TablePath, Table> tables;
     private final Map<TablePath, RowType> tableRowTypes;
@@ -85,8 +89,13 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
     private long snapshotRecordsToSkip;
     private long currentReadRecordsCount;
 
-    public FlussSplitReader(Configuration flussConfig) {
+    public FlussSplitReader(
+            Configuration flussConfig,
+            WrapperFlussMetricRegistry metricRegistry,
+            FlussSourceReaderMetrics sourceReaderMetrics) {
         this.flussConfig = flussConfig;
+        this.metricRegistry = metricRegistry;
+        this.sourceReaderMetrics = sourceReaderMetrics;
         this.tables = new HashMap<>();
         this.tableRowTypes = new HashMap<>();
         this.bucketToSplit = new HashMap<>();
@@ -105,6 +114,9 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         }
 
         // Read from log scanners
+        long fetchTimestamp = System.currentTimeMillis();
+        long maxRecordTimestamp = -1;
+
         MultiTableLogScanner scanner = getOrCreateTableLogScanner();
         MultiTableRecords scanRecords = scanner.poll(POLL_TIMEOUT);
         if (scanRecords != null && !scanRecords.isEmpty()) {
@@ -117,9 +129,21 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                             continue;
                         }
                         builder.add(split.splitId(), new FlussSourceRecord(record));
+
+                        // Track offset and timestamp for metrics
+                        long offset = record.logOffset();
+                        if (offset >= 0) {
+                            sourceReaderMetrics.recordCurrentOffset(bucket, offset);
+                        }
+                        maxRecordTimestamp = Math.max(maxRecordTimestamp, record.timestamp());
                     }
                 }
             }
+        }
+
+        // Report event time lag
+        if (maxRecordTimestamp > 0) {
+            sourceReaderMetrics.reportRecordEventTime(fetchTimestamp - maxRecordTimestamp);
         }
 
         return builder.build();
@@ -135,7 +159,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         }
 
         if (connection == null) {
-            connection = ConnectionFactory.createConnection(flussConfig);
+            connection = ConnectionFactory.createConnection(flussConfig, metricRegistry);
         }
 
         for (FlussSplitBase split : splitsChanges.splits()) {
@@ -272,6 +296,9 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         TablePath tablePath = split.getTablePath();
         TableBucket tableBucket = split.getTableBucket();
 
+        // Register metrics for this bucket
+        sourceReaderMetrics.registerTableBucket(tableBucket);
+
         MultiTableLogScanner scanner = getOrCreateTableLogScanner();
 
         if (tableBucket.getPartitionId() != null) {
@@ -297,7 +324,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
             return currentLogScanner;
         }
         if (connection == null) {
-            connection = ConnectionFactory.createConnection(flussConfig);
+            connection = ConnectionFactory.createConnection(flussConfig, metricRegistry);
         }
 
         currentLogScanner = connection.getMultiTable().newMultiTableScan().createLogScanner();

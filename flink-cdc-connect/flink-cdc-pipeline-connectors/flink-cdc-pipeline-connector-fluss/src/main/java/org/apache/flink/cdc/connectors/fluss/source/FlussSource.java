@@ -25,10 +25,12 @@ import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
+import org.apache.flink.cdc.connectors.fluss.sink.v2.metrics.WrapperFlussMetricRegistry;
 import org.apache.flink.cdc.connectors.fluss.source.deserializer.FlussDeserializer;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumState;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumStateSerializer;
 import org.apache.flink.cdc.connectors.fluss.source.enumerator.FlussSourceEnumerator;
+import org.apache.flink.cdc.connectors.fluss.source.metrics.FlussSourceReaderMetrics;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussRecordEmitter;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceReader;
 import org.apache.flink.cdc.connectors.fluss.source.reader.FlussSourceRecord;
@@ -40,6 +42,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import org.apache.fluss.client.initializer.OffsetsInitializer;
 
+import java.util.Collections;
 import java.util.HashSet;
 
 /**
@@ -121,9 +124,20 @@ public class FlussSource<T> implements Source<T, FlussSplitBase, FlussSourceEnum
 
     @Override
     public SourceReader<T, FlussSplitBase> createReader(SourceReaderContext readerContext) {
+        FlussSourceReaderMetrics sourceReaderMetrics =
+                new FlussSourceReaderMetrics(readerContext.metricGroup());
+        WrapperFlussMetricRegistry metricRegistry =
+                new WrapperFlussMetricRegistry(readerContext.metricGroup(), Collections.emptySet());
+
         FlussRecordEmitter<T> recordEmitter = new FlussRecordEmitter<>(deserializer);
         FutureCompletingBlockingQueue<RecordsWithSplitIds<FlussSourceRecord>> elementsQueue =
                 new FutureCompletingBlockingQueue<>();
-        return new FlussSourceReader<>(elementsQueue, readerContext, flussConfig, recordEmitter);
+        return new FlussSourceReader<>(
+                elementsQueue,
+                readerContext,
+                flussConfig,
+                metricRegistry,
+                sourceReaderMetrics,
+                recordEmitter);
     }
 }

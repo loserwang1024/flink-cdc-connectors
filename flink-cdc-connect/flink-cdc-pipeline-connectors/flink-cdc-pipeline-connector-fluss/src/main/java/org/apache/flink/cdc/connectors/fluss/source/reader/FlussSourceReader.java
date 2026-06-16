@@ -18,6 +18,8 @@
 package org.apache.flink.cdc.connectors.fluss.source.reader;
 
 import org.apache.flink.api.connector.source.SourceReaderContext;
+import org.apache.flink.cdc.connectors.fluss.sink.v2.metrics.WrapperFlussMetricRegistry;
+import org.apache.flink.cdc.connectors.fluss.source.metrics.FlussSourceReaderMetrics;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussHybridSnapshotLogSplitState;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussLogSplitState;
 import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitBase;
@@ -57,11 +59,16 @@ public class FlussSourceReader<T>
             FutureCompletingBlockingQueue<RecordsWithSplitIds<FlussSourceRecord>> elementsQueue,
             SourceReaderContext readerContext,
             org.apache.fluss.config.Configuration flussConfig,
+            WrapperFlussMetricRegistry metricRegistry,
+            FlussSourceReaderMetrics sourceReaderMetrics,
             FlussRecordEmitter<T> recordEmitter) {
         super(
                 elementsQueue,
                 new SingleThreadFetcherManagerAdapter<FlussSourceRecord, FlussSplitBase>(
-                        elementsQueue, () -> new FlussSplitReader(flussConfig)),
+                        elementsQueue,
+                        () ->
+                                new FlussSplitReader(
+                                        flussConfig, metricRegistry, sourceReaderMetrics)),
                 recordEmitter,
                 new Configuration(),
                 readerContext);
