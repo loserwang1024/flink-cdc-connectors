@@ -54,6 +54,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +79,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
     private Connection connection;
     private final Map<TablePath, Table> tables;
     private final Map<TablePath, RowType> tableRowTypes;
+    private final Map<TablePath, List<String>> tablePrimaryKeyNames;
     private final Map<TableBucket, FlussSplitBase> bucketToSplit;
 
     // Bounded (snapshot) split reading
@@ -98,6 +100,7 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
         this.sourceReaderMetrics = sourceReaderMetrics;
         this.tables = new HashMap<>();
         this.tableRowTypes = new HashMap<>();
+        this.tablePrimaryKeyNames = new HashMap<>();
         this.bucketToSplit = new HashMap<>();
         this.boundedSplits = new ArrayDeque<>();
     }
@@ -248,7 +251,11 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
                 builder.add(
                         currentBoundedSplit.splitId(),
                         new FlussSourceRecord(
-                                scanRecord, tablePath, rowType, currentReadRecordsCount));
+                                scanRecord,
+                                tablePath,
+                                rowType,
+                                currentReadRecordsCount,
+                                getPrimaryKeyNames(tablePath)));
             }
         } finally {
             batch.close();
@@ -338,14 +345,21 @@ public class FlussSplitReader implements SplitReader<FlussSourceRecord, FlussSpl
             }
             Table table = connection.getTable(tablePath);
             tables.put(tablePath, table);
-            RowType rowType = schemaToRowType(table.getTableInfo().getSchema());
+            org.apache.fluss.metadata.Schema schema = table.getTableInfo().getSchema();
+            RowType rowType = schemaToRowType(schema);
             tableRowTypes.put(tablePath, rowType);
+            tablePrimaryKeyNames.put(tablePath, schema.getPrimaryKeyColumnNames());
         }
         return tables.get(tablePath);
     }
 
     protected RowType getRowType(TablePath tablePath) {
         return tableRowTypes.get(tablePath);
+    }
+
+    protected List<String> getPrimaryKeyNames(TablePath tablePath) {
+        List<String> keys = tablePrimaryKeyNames.get(tablePath);
+        return keys != null ? keys : Collections.emptyList();
     }
 
     private static RowType schemaToRowType(org.apache.fluss.metadata.Schema schema) {

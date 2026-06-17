@@ -21,6 +21,9 @@ import org.apache.fluss.types.RowType;
 
 import javax.annotation.Nullable;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Abstract base class for the mutable state of a {@link FlussSplitBase}. Concrete subclasses track
  * the reading progress for each split type and convert back to an immutable split on checkpoint.
@@ -38,10 +41,14 @@ public abstract class FlussSplitState {
     /** Tracks the {@link RowType} corresponding to {@link #schemaId}. */
     private @Nullable RowType rowType;
 
+    /** Tracks the primary key column names for this split. */
+    private List<String> primaryKeyNames;
+
     public FlussSplitState(FlussSplitBase split) {
         this.split = split;
         this.schemaId = split.getSchemaId();
         this.rowType = split.getRowType();
+        this.primaryKeyNames = split.getPrimaryKeyNames();
     }
 
     /** Checks whether this split state is a hybrid snapshot log split state. */
@@ -79,8 +86,17 @@ public abstract class FlussSplitState {
      * Updates the schema tracking with the latest schemaId and corresponding RowType. Called by the
      * record emitter when processing records.
      */
-    public void updateSchema(int schemaId, RowType rowType) {
+    public void updateSchema(int schemaId, RowType rowType, List<String> primaryKeyNames) {
         this.schemaId = schemaId;
         this.rowType = rowType;
+        this.primaryKeyNames =
+                primaryKeyNames != null
+                        ? Collections.unmodifiableList(primaryKeyNames)
+                        : Collections.emptyList();
+    }
+
+    /** Returns the tracked primary key column names. */
+    protected List<String> getPrimaryKeyNames() {
+        return primaryKeyNames;
     }
 }

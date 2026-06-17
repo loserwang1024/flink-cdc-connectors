@@ -23,6 +23,8 @@ import org.apache.fluss.types.RowType;
 
 import javax.annotation.Nullable;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -35,7 +37,7 @@ public class FlussLogSplit extends FlussSplitBase {
 
     public FlussLogSplit(
             PhysicalTablePath tablePath, TableBucket tableBucket, long startingOffset) {
-        this(tablePath, tableBucket, startingOffset, null, null);
+        this(tablePath, tableBucket, startingOffset, null, null, Collections.emptyList());
     }
 
     /** Full constructor, typically used during checkpoint recovery. */
@@ -45,7 +47,18 @@ public class FlussLogSplit extends FlussSplitBase {
             long startingOffset,
             @Nullable Integer schemaId,
             @Nullable RowType rowType) {
-        super(tablePath, tableBucket, schemaId, rowType);
+        this(tablePath, tableBucket, startingOffset, schemaId, rowType, Collections.emptyList());
+    }
+
+    /** Full constructor with primary key names, used during checkpoint recovery. */
+    public FlussLogSplit(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            long startingOffset,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType,
+            List<String> primaryKeyNames) {
+        super(tablePath, tableBucket, schemaId, rowType, primaryKeyNames);
         this.startingOffset = startingOffset;
     }
 

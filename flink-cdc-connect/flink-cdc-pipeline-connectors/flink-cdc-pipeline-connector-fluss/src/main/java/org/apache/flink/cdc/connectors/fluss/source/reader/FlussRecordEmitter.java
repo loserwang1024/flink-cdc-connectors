@@ -25,10 +25,14 @@ import org.apache.flink.cdc.connectors.fluss.source.split.FlussSplitState;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
 
 import org.apache.fluss.client.table.scanner.ScanRecord;
+import org.apache.fluss.metadata.TablePath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A {@link RecordEmitter} that uses a {@link FlussDeserializer} to convert {@link
@@ -55,6 +59,12 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
 
     private final FlussDeserializer<T> deserializer;
 
+    /**
+     * Pending events to emit on the first record for each table after state restoration. Populated
+     * during {@link #applySplit} and drained in {@link #emitRecord}.
+     */
+    private final Map<TablePath, List<T>> pendingTableEvents = new HashMap<>();
+
     public FlussRecordEmitter(FlussDeserializer<T> deserializer) {
         this.deserializer = deserializer;
     }
@@ -63,6 +73,16 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
     public void emitRecord(
             FlussSourceRecord element, SourceOutput<T> output, FlussSplitState splitState)
             throws Exception {
+        // Emit pending CreateTableEvents for this table before processing the actual record.
+        // This ensures downstream CDC operators receive CreateTableEvent after state restoration.
+        TablePath tablePath = element.getTablePath();
+        List<T> pendingEvents = pendingTableEvents.remove(tablePath);
+        if (pendingEvents != null) {
+            for (T event : pendingEvents) {
+                output.collect(event);
+            }
+        }
+
         ScanRecord scanRecord = element.getScanRecord();
 
         if (splitState.isHybridSnapshotLogSplitState()) {
@@ -116,18 +136,34 @@ public class FlussRecordEmitter<T> implements RecordEmitter<FlussSourceRecord, T
     private void updateSchemaTracking(FlussSplitState splitState, FlussSourceRecord element) {
         int schemaId = element.getScanRecord().getSchemaId();
         if (schemaId >= 0) {
-            splitState.updateSchema(schemaId, element.getRowType());
+            splitState.updateSchema(schemaId, element.getRowType(), element.getPrimaryKeyNames());
         }
     }
 
     /**
-     * Restores the deserializer's internal schema cache from a recovered split. Called during split
-     * initialization to enable correct schema change detection after failover.
+     * Restores the deserializer's internal schema cache from a recovered split and builds a pending
+     * {@code CreateTableEvent} for emission on the first record. This ensures downstream CDC
+     * operators can rebuild their schema state after failover, and subsequent schema changes
+     * (between checkpoint and now) are correctly detected.
      */
     public void applySplit(FlussSplitBase split) {
         if (split.getSchemaId() != null && split.getRowType() != null) {
-            deserializer.restoreState(
-                    split.getTablePath(), split.getSchemaId(), split.getRowType());
+            TablePath tablePath = split.getTablePath();
+            List<T> pendingEvents =
+                    deserializer.restoreState(
+                            tablePath,
+                            split.getSchemaId(),
+                            split.getRowType(),
+                            split.getPrimaryKeyNames());
+            if (!pendingEvents.isEmpty()) {
+                pendingTableEvents.compute(
+                        tablePath,
+                        (path, list) -> {
+                            List<T> newList = list != null ? list : new ArrayList<>();
+                            newList.addAll(pendingEvents);
+                            return newList;
+                        });
+            }
         }
     }
 }

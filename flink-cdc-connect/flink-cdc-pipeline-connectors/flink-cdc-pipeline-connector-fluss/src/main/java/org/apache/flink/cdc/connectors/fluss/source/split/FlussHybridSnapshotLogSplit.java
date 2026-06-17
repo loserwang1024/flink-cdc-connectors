@@ -23,6 +23,8 @@ import org.apache.fluss.types.RowType;
 
 import javax.annotation.Nullable;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -44,7 +46,16 @@ public class FlussHybridSnapshotLogSplit extends FlussSnapshotSplit {
             TableBucket tableBucket,
             long snapshotId,
             long logStartingOffset) {
-        this(tablePath, tableBucket, snapshotId, 0, logStartingOffset, false, null, null);
+        this(
+                tablePath,
+                tableBucket,
+                snapshotId,
+                0,
+                logStartingOffset,
+                false,
+                null,
+                null,
+                Collections.emptyList());
     }
 
     /** Full constructor, typically used during checkpoint recovery. */
@@ -63,7 +74,8 @@ public class FlussHybridSnapshotLogSplit extends FlussSnapshotSplit {
                 logStartingOffset,
                 snapshotFinished,
                 null,
-                null);
+                null,
+                Collections.emptyList());
     }
 
     /** Full constructor with schema info, typically used during checkpoint recovery. */
@@ -76,7 +88,37 @@ public class FlussHybridSnapshotLogSplit extends FlussSnapshotSplit {
             boolean snapshotFinished,
             @Nullable Integer schemaId,
             @Nullable RowType rowType) {
-        super(tablePath, tableBucket, snapshotId, recordsToSkip, schemaId, rowType);
+        this(
+                tablePath,
+                tableBucket,
+                snapshotId,
+                recordsToSkip,
+                logStartingOffset,
+                snapshotFinished,
+                schemaId,
+                rowType,
+                Collections.emptyList());
+    }
+
+    /** Full constructor with primary key names, used during checkpoint recovery. */
+    public FlussHybridSnapshotLogSplit(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            long snapshotId,
+            long recordsToSkip,
+            long logStartingOffset,
+            boolean snapshotFinished,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType,
+            List<String> primaryKeyNames) {
+        super(
+                tablePath,
+                tableBucket,
+                snapshotId,
+                recordsToSkip,
+                schemaId,
+                rowType,
+                primaryKeyNames);
         this.logStartingOffset = logStartingOffset;
         this.snapshotFinished = snapshotFinished;
     }

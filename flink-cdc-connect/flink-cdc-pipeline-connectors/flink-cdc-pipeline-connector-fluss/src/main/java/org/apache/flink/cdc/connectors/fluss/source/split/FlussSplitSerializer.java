@@ -33,6 +33,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Serializer for {@link FlussSplitBase} and its subclasses. Uses a type tag byte to distinguish
@@ -101,6 +104,9 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
             // Write schema info
             writeSchemaInfo(out, split.getSchemaId(), split.getRowType());
 
+            // Write primary key names
+            writePrimaryKeyNames(out, split.getPrimaryKeyNames());
+
             return baos.toByteArray();
         }
     }
@@ -137,6 +143,7 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
             // Read type-specific fields and schema info
             @Nullable Integer schemaId = null;
             @Nullable RowType rowType = null;
+            List<String> primaryKeyNames = Collections.emptyList();
 
             switch (type) {
                 case TYPE_HYBRID:
@@ -147,6 +154,7 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                         boolean snapshotFinished = in.readBoolean();
                         schemaId = readSchemaId(in);
                         rowType = readRowType(in);
+                        primaryKeyNames = readPrimaryKeyNames(in);
                         return new FlussHybridSnapshotLogSplit(
                                 physicalTablePath,
                                 tableBucket,
@@ -155,7 +163,8 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                                 logStartingOffset,
                                 snapshotFinished,
                                 schemaId,
-                                rowType);
+                                rowType,
+                                primaryKeyNames);
                     }
                 case TYPE_SNAPSHOT:
                     {
@@ -163,13 +172,15 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                         long recordsToSkip = in.readLong();
                         schemaId = readSchemaId(in);
                         rowType = readRowType(in);
+                        primaryKeyNames = readPrimaryKeyNames(in);
                         return new FlussSnapshotSplit(
                                 physicalTablePath,
                                 tableBucket,
                                 snapshotId,
                                 recordsToSkip,
                                 schemaId,
-                                rowType);
+                                rowType,
+                                primaryKeyNames);
                     }
                 case TYPE_LOG:
                 default:
@@ -177,8 +188,14 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
                         long startingOffset = in.readLong();
                         schemaId = readSchemaId(in);
                         rowType = readRowType(in);
+                        primaryKeyNames = readPrimaryKeyNames(in);
                         return new FlussLogSplit(
-                                physicalTablePath, tableBucket, startingOffset, schemaId, rowType);
+                                physicalTablePath,
+                                tableBucket,
+                                startingOffset,
+                                schemaId,
+                                rowType,
+                                primaryKeyNames);
                     }
             }
         }
@@ -227,5 +244,30 @@ public class FlussSplitSerializer implements SimpleVersionedSerializer<FlussSpli
         } catch (ClassNotFoundException e) {
             throw new IOException("Failed to deserialize RowType", e);
         }
+    }
+
+    // -------------------------------------------------------------------------
+    //  Primary key serialization helpers
+    // -------------------------------------------------------------------------
+
+    private static void writePrimaryKeyNames(
+            DataOutputViewStreamWrapper out, List<String> primaryKeyNames) throws IOException {
+        out.writeInt(primaryKeyNames.size());
+        for (String keyName : primaryKeyNames) {
+            out.writeUTF(keyName);
+        }
+    }
+
+    private static List<String> readPrimaryKeyNames(DataInputViewStreamWrapper in)
+            throws IOException {
+        int size = in.readInt();
+        if (size == 0) {
+            return Collections.emptyList();
+        }
+        List<String> keys = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            keys.add(in.readUTF());
+        }
+        return keys;
     }
 }

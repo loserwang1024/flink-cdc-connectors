@@ -39,6 +39,7 @@ public class FlussLogSplitState extends FlussSplitState {
                 split.getTableBucket(),
                 nextOffset,
                 getSchemaId(),
-                getRowType());
+                getRowType(),
+                getPrimaryKeyNames());
     }
 }

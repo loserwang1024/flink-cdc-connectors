@@ -26,6 +26,9 @@ import org.apache.fluss.types.RowType;
 
 import javax.annotation.Nullable;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Abstract base class for all Fluss source splits. Each split corresponds to a single bucket of a
  * single table, optionally within a specific partition.
@@ -56,8 +59,14 @@ public abstract class FlussSplitBase implements SourceSplit {
      */
     protected final @Nullable RowType rowType;
 
+    /**
+     * The primary key column names of the source table. Empty for log-only (append-only) tables.
+     * Persisted in state so that primary key changes can be detected after recovery.
+     */
+    protected final List<String> primaryKeyNames;
+
     protected FlussSplitBase(PhysicalTablePath tablePath, TableBucket tableBucket) {
-        this(tablePath, tableBucket, null, null);
+        this(tablePath, tableBucket, null, null, Collections.emptyList());
     }
 
     protected FlussSplitBase(
@@ -65,10 +74,23 @@ public abstract class FlussSplitBase implements SourceSplit {
             TableBucket tableBucket,
             @Nullable Integer schemaId,
             @Nullable RowType rowType) {
+        this(tablePath, tableBucket, schemaId, rowType, Collections.emptyList());
+    }
+
+    protected FlussSplitBase(
+            PhysicalTablePath tablePath,
+            TableBucket tableBucket,
+            @Nullable Integer schemaId,
+            @Nullable RowType rowType,
+            List<String> primaryKeyNames) {
         this.tablePath = tablePath;
         this.tableBucket = tableBucket;
         this.schemaId = schemaId;
         this.rowType = rowType;
+        this.primaryKeyNames =
+                primaryKeyNames != null
+                        ? Collections.unmodifiableList(primaryKeyNames)
+                        : Collections.emptyList();
     }
 
     @Override
@@ -108,6 +130,11 @@ public abstract class FlussSplitBase implements SourceSplit {
 
     public @Nullable RowType getRowType() {
         return rowType;
+    }
+
+    /** Returns the primary key column names (empty for log-only / append-only tables). */
+    public List<String> getPrimaryKeyNames() {
+        return primaryKeyNames;
     }
 
     public boolean isLogSplit() {

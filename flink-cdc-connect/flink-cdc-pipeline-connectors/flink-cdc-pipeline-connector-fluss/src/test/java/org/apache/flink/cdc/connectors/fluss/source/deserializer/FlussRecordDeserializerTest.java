@@ -36,6 +36,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,7 +82,8 @@ class FlussRecordDeserializerTest {
                         /* sizeInBytes= */ -1),
                 TABLE_PATH,
                 rowType,
-                1);
+                1,
+                Collections.emptyList());
     }
 
     /** Creates a snapshot-phase ScanRecord (schemaId = -1, rowType = null). */

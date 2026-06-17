@@ -23,6 +23,7 @@ import org.apache.fluss.types.RowType;
 
 import javax.annotation.Nullable;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -35,23 +36,16 @@ public class FlussSnapshotSplit extends FlussSplitBase {
     private final long snapshotId;
     private final long recordsToSkip;
 
-    public FlussSnapshotSplit(
-            PhysicalTablePath tablePath,
-            TableBucket tableBucket,
-            long snapshotId,
-            long recordsToSkip) {
-        this(tablePath, tableBucket, snapshotId, recordsToSkip, null, null);
-    }
-
-    /** Full constructor with schema info, typically used during checkpoint recovery. */
+    /** Full constructor with primary key names, used during checkpoint recovery. */
     public FlussSnapshotSplit(
             PhysicalTablePath tablePath,
             TableBucket tableBucket,
             long snapshotId,
             long recordsToSkip,
             @Nullable Integer schemaId,
-            @Nullable RowType rowType) {
-        super(tablePath, tableBucket, schemaId, rowType);
+            @Nullable RowType rowType,
+            List<String> primaryKeyNames) {
+        super(tablePath, tableBucket, schemaId, rowType, primaryKeyNames);
         this.snapshotId = snapshotId;
         this.recordsToSkip = recordsToSkip;
     }

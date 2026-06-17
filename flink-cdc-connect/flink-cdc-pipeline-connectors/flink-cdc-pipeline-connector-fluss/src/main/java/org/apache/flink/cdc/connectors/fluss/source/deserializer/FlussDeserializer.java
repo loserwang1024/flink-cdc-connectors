@@ -24,6 +24,7 @@ import org.apache.fluss.metadata.TablePath;
 import org.apache.fluss.types.RowType;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -53,10 +54,12 @@ public interface FlussDeserializer<T> extends Serializable {
      * @param tablePath The Fluss table path.
      * @param schemaId The schema ID from the checkpointed split.
      * @param rowType The {@link RowType} corresponding to the schemaId.
+     * @param primaryKeyNames The primary key column names from the checkpointed split.
      */
     // todo: 可以通过context传入，方便后续扩展
     // todo: split只保存shemaId，防止schema太大，重启后通过get schema来获取
-    default void restoreState(TablePath tablePath, int schemaId, RowType rowType) {
-        // Default no-op.
+    default List<T> restoreState(
+            TablePath tablePath, int schemaId, RowType rowType, List<String> primaryKeyNames) {
+        return Collections.emptyList();
     }
 }

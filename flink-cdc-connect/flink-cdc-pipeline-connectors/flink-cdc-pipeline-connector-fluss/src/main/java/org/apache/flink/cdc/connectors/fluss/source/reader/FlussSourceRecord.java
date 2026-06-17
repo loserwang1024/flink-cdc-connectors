@@ -22,6 +22,9 @@ import org.apache.fluss.client.table.scanner.ScanRecord;
 import org.apache.fluss.metadata.TablePath;
 import org.apache.fluss.types.RowType;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * A wrapper that bundles a Fluss {@link ScanRecord} together with the table context (table path and
  * row type) needed for deserialization. This is the intermediate element type flowing from the
@@ -39,6 +42,7 @@ public class FlussSourceRecord {
     private final TablePath tablePath;
     private final RowType rowType;
     private final long readRecordsCount;
+    private final List<String> primaryKeyNames;
 
     /** Creates a log record (no snapshot position tracking). */
     public FlussSourceRecord(MultiTableRecord multiTableRecord) {
@@ -46,16 +50,25 @@ public class FlussSourceRecord {
                 multiTableRecord.getScanRecord(),
                 multiTableRecord.getTablePath(),
                 multiTableRecord.getSchema().getRowType(),
-                NO_READ_RECORDS_COUNT);
+                NO_READ_RECORDS_COUNT,
+                multiTableRecord.getSchema().getPrimaryKeyColumnNames());
     }
 
     /** Creates a snapshot record with the cumulative read count for recovery. */
     public FlussSourceRecord(
-            ScanRecord scanRecord, TablePath tablePath, RowType rowType, long readRecordsCount) {
+            ScanRecord scanRecord,
+            TablePath tablePath,
+            RowType rowType,
+            long readRecordsCount,
+            List<String> primaryKeyNames) {
         this.scanRecord = scanRecord;
         this.tablePath = tablePath;
         this.rowType = rowType;
         this.readRecordsCount = readRecordsCount;
+        this.primaryKeyNames =
+                primaryKeyNames != null
+                        ? Collections.unmodifiableList(primaryKeyNames)
+                        : Collections.emptyList();
     }
 
     public ScanRecord getScanRecord() {
@@ -72,5 +85,10 @@ public class FlussSourceRecord {
 
     public long getReadRecordsCount() {
         return readRecordsCount;
+    }
+
+    /** Returns the primary key column names of the source table (empty for log tables). */
+    public List<String> getPrimaryKeyNames() {
+        return primaryKeyNames;
     }
 }

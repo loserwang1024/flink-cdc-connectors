@@ -25,6 +25,7 @@ import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.source.discover.TableDiscoverer;
 import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.types.DataTypes;
@@ -74,9 +75,9 @@ import static org.apache.fluss.server.testutils.FlussClusterExtension.BUILTIN_DA
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Integration tests for {@link FlussSource} as a CDC pipeline source. */
-public class FlussSourceITCase {
+public class FlussSourcePipelineITCase {
 
-    private static final Logger LOG = LoggerFactory.getLogger(FlussSourceITCase.class);
+    private static final Logger LOG = LoggerFactory.getLogger(FlussSourcePipelineITCase.class);
     private static final int MAX_PARALLELISM = 4;
     private static final String DATABASE_NAME = "test_source_db";
     private static final Duration COLLECT_TIMEOUT = Duration.ofSeconds(60);
@@ -141,7 +142,9 @@ public class FlussSourceITCase {
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
         List<Event> allEvents = collectAllEvents(source, 4, COLLECT_TIMEOUT);
-        assertCreateTableEvents(allEvents, tableName);
+        assertCreateTableEvents(
+                allEvents,
+                "pk_table: columns=[`id` INT NOT NULL, `name` STRING], primaryKeys=[id]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
@@ -165,7 +168,8 @@ public class FlussSourceITCase {
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
         List<Event> allEvents = collectAllEvents(source, 6, COLLECT_TIMEOUT);
-        assertCreateTableEvents(allEvents, tableName);
+        assertCreateTableEvents(
+                allEvents, "log_table: columns=[`id` INT, `name` STRING], primaryKeys=[]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
@@ -202,7 +206,9 @@ public class FlussSourceITCase {
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
         List<Event> allEvents = collectAllEvents(source, 5, COLLECT_TIMEOUT, 1);
-        assertCreateTableEvents(allEvents, tableName);
+        assertCreateTableEvents(
+                allEvents,
+                "part_pk_table: columns=[`id` INT NOT NULL, `ds` STRING NOT NULL, `name` STRING], primaryKeys=[id, ds]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual =
@@ -258,7 +264,11 @@ public class FlussSourceITCase {
         // Use wildcard pattern to read all tables
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, "mixed_*", "earliest");
         List<Event> allEvents = collectAllEvents(source, 9, COLLECT_TIMEOUT, 1);
-        assertCreateTableEvents(allEvents, pkTable, logTable, partTable);
+        assertCreateTableEvents(
+                allEvents,
+                "mixed_pk: columns=[`id` INT NOT NULL, `val` STRING], primaryKeys=[id]",
+                "mixed_log: columns=[`id` INT, `val` STRING], primaryKeys=[]",
+                "mixed_part: columns=[`id` INT NOT NULL, `ds` STRING NOT NULL, `val` STRING], primaryKeys=[id, ds]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         // Group events by table and verify each table's records
@@ -302,7 +312,9 @@ public class FlussSourceITCase {
 
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "earliest");
         List<Event> allEvents = collectAllEvents(source, 4, COLLECT_TIMEOUT);
-        assertCreateTableEvents(allEvents, tableName);
+        assertCreateTableEvents(
+                allEvents,
+                "earliest_test: columns=[`id` INT NOT NULL, `name` STRING], primaryKeys=[id]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
@@ -376,7 +388,9 @@ public class FlussSourceITCase {
 
         // Should only receive the NEW data (written after source started)
         // todo: 现在分别filter createTableEvent和dataEvents不是很能体现出顺序，后续需要优化
-        assertCreateTableEvents(collectedEvents, tableName);
+        assertCreateTableEvents(
+                collectedEvents,
+                "latest_test: columns=[`id` INT NOT NULL, `name` STRING], primaryKeys=[id]");
         List<DataChangeEvent> dataEvents = filterDataChangeEvents(collectedEvents);
         List<String> actual = convertToStringList(dataEvents, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual).containsExactlyInAnyOrder("+I[3, New1]", "+I[4, New2]");
@@ -412,7 +426,9 @@ public class FlussSourceITCase {
         // Start source in "full" mode - should read snapshot + log
         FlussSource<Event> source = createFlussSource(DATABASE_NAME, tableName, "full");
         List<Event> allEvents = collectAllEvents(source, 6, COLLECT_TIMEOUT);
-        assertCreateTableEvents(allEvents, tableName);
+        assertCreateTableEvents(
+                allEvents,
+                "full_test: columns=[`id` INT NOT NULL, `name` STRING], primaryKeys=[id]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         // All 5 records should be present (3 from snapshot + 2 from log)
@@ -460,7 +476,9 @@ public class FlussSourceITCase {
         FlussSource<Event> source =
                 createFlussSourceWithTimestamp(DATABASE_NAME, tableName, timestampMarker);
         List<Event> allEvents = collectAllEvents(source, 4, COLLECT_TIMEOUT);
-        assertCreateTableEvents(allEvents, tableName);
+        assertCreateTableEvents(
+                allEvents,
+                "timestamp_test: columns=[`id` INT NOT NULL, `name` STRING], primaryKeys=[id]");
         List<DataChangeEvent> events = filterDataChangeEvents(allEvents);
 
         List<String> actual = convertToStringList(events, DataTypes.INT(), DataTypes.STRING());
@@ -603,7 +621,9 @@ public class FlussSourceITCase {
                         .executeAndCollect("DiscoveryTest");
 
         List<Event> allPhase1 = collectAllEvents(iter, 3, Duration.ofMinutes(5), false);
-        assertCreateTableEvents(allPhase1, tableA);
+        assertCreateTableEvents(
+                allPhase1,
+                "discover_a: columns=[`id` INT NOT NULL, `val` STRING], primaryKeys=[id]");
         List<DataChangeEvent> dataChangeEvents = filterDataChangeEvents(allPhase1);
         List<String> actual =
                 convertToStringList(dataChangeEvents, DataTypes.INT(), DataTypes.STRING());
@@ -621,9 +641,10 @@ public class FlussSourceITCase {
                 .executeSql(String.format("INSERT INTO %s VALUES (1, 'b1'), (2, 'b2')", tableB))
                 .await();
 
-        // todo: 测试，将event中携带table name
         List<Event> allPhase2 = collectAllEvents(iter, 3, Duration.ofMinutes(5), true);
-        assertCreateTableEvents(allPhase2, tableB);
+        assertCreateTableEvents(
+                allPhase2,
+                "discover_b: columns=[`id` INT NOT NULL, `val` STRING], primaryKeys=[id]");
         dataChangeEvents = filterDataChangeEvents(allPhase2);
         actual = convertToStringList(dataChangeEvents, DataTypes.INT(), DataTypes.STRING());
         assertThat(actual).containsExactlyInAnyOrder("+I[1, b1]", "+I[2, b2]");
@@ -679,7 +700,9 @@ public class FlussSourceITCase {
 
         // Phase 1: should receive CreateTable(tableA) + its 2 data rows.
         List<Event> phase1 = collectAllEvents(iter, 3, Duration.ofMinutes(5), false);
-        assertCreateTableEvents(phase1, tableA);
+        assertCreateTableEvents(
+                phase1,
+                "sub_discover_a: columns=[`id` INT NOT NULL, `val` STRING], primaryKeys=[id]");
         List<String> actualA =
                 convertToStringList(
                         filterDataChangeEvents(phase1), DataTypes.INT(), DataTypes.STRING());
@@ -706,7 +729,9 @@ public class FlussSourceITCase {
 
         // Phase 2: should receive CreateTable(tableB) + its 2 data rows.
         List<Event> phase2 = collectAllEvents(iter, 3, Duration.ofMinutes(5), true);
-        assertCreateTableEvents(phase2, tableB);
+        assertCreateTableEvents(
+                phase2,
+                "sub_discover_b: columns=[`id` INT NOT NULL, `val` STRING], primaryKeys=[id]");
         List<String> actualB =
                 convertToStringList(
                         filterDataChangeEvents(phase2), DataTypes.INT(), DataTypes.STRING());
@@ -751,7 +776,9 @@ public class FlussSourceITCase {
                         .executeAndCollect("PartitionDiscoveryTest");
 
         List<Event> allPhase1 = collectAllEvents(iter, 3, Duration.ofMinutes(5), false);
-        assertCreateTableEvents(allPhase1, tableName);
+        assertCreateTableEvents(
+                allPhase1,
+                "part_discover_table: columns=[`id` INT NOT NULL, `ds` STRING NOT NULL, `val` STRING], primaryKeys=[id, ds]");
         List<DataChangeEvent> dataChangeEvents = filterDataChangeEvents(allPhase1);
         List<String> actual =
                 convertToStringList(
@@ -810,7 +837,9 @@ public class FlussSourceITCase {
 
         // Phase 1: Collect CreateTableEvent + initial 2 DataChangeEvents
         List<Event> allPhase1 = collectAllEvents(iter, 3, Duration.ofMinutes(2), false);
-        assertCreateTableEvents(allPhase1, tableName);
+        assertCreateTableEvents(
+                allPhase1,
+                "add_column_test: columns=[`id` INT NOT NULL, `name` STRING], primaryKeys=[id]");
         List<DataChangeEvent> initialEvents = filterDataChangeEvents(allPhase1);
         List<String> initialStrings =
                 convertToStringList(initialEvents, DataTypes.INT(), DataTypes.STRING());
@@ -1117,18 +1146,31 @@ public class FlussSourceITCase {
         return events;
     }
 
-    private void assertCreateTableEvents(List<Event> events, String... tableNames) {
-        List<CreateTableEvent> createEvents =
-                events.stream()
-                        .filter(e -> e instanceof CreateTableEvent)
-                        .map(e -> (CreateTableEvent) e)
-                        .collect(Collectors.toList());
-        assertThat(createEvents).hasSize(tableNames.length);
-        List<String> actualTableNames =
-                createEvents.stream()
-                        .map(e -> e.tableId().getTableName())
-                        .collect(Collectors.toList());
-        assertThat(actualTableNames).containsExactlyInAnyOrder(tableNames);
+    private void assertCreateTableEvents(List<Event> events, String... expected) {
+        List<String> actual = convertCreateTableEventsToStringList(events);
+        assertThat(actual).containsExactlyInAnyOrder(expected);
+    }
+
+    /**
+     * Converts CreateTableEvents in the event list to human-readable strings in the format {@code
+     * tableName: columns=[`col` TYPE, ...], primaryKeys=[pk1, pk2]} for assertions.
+     */
+    private List<String> convertCreateTableEventsToStringList(List<Event> events) {
+        return events.stream()
+                .filter(e -> e instanceof CreateTableEvent)
+                .map(e -> (CreateTableEvent) e)
+                .map(
+                        e -> {
+                            String tableName = e.tableId().getTableName();
+                            String columns =
+                                    e.getSchema().getColumns().stream()
+                                            .map(Column::asSummaryString)
+                                            .collect(Collectors.joining(", "));
+                            String pks = String.join(", ", e.getSchema().primaryKeys());
+                            return String.format(
+                                    "%s: columns=[%s], primaryKeys=[%s]", tableName, columns, pks);
+                        })
+                .collect(Collectors.toList());
     }
 
     private List<DataChangeEvent> filterDataChangeEvents(List<Event> events) {
@@ -1216,6 +1258,7 @@ public class FlussSourceITCase {
         conf.setInt(ConfigOptions.DEFAULT_REPLICATION_FACTOR, 3);
         conf.set(ConfigOptions.KV_SNAPSHOT_INTERVAL, Duration.ofSeconds(1));
         conf.set(ConfigOptions.LOG_REPLICA_MAX_LAG_TIME, Duration.ofSeconds(10));
+        conf.setDouble(ConfigOptions.SERVER_DATA_DISK_WRITE_LIMIT_RATIO, 1.0);
         return conf;
     }
 }
