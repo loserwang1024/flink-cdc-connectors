@@ -47,8 +47,10 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A CDC-specific implementation of {@link FlussDeserializer} that converts Fluss {@link
@@ -70,6 +72,13 @@ public class FlussRecordDeserializer implements FlussDeserializer<Event> {
 
     /** Cache of the last-seen RowType per table, used to detect schema changes. */
     private transient Map<TablePath, BinaryRecordDataGenerator> latestRecordDataGeneratorCache;
+
+    /**
+     * Tracks tables for which a {@link CreateTableEvent} has already been emitted in this
+     * execution. After state restoration, this set is empty so that CreateTableEvent is re-emitted
+     * for downstream operators to rebuild their schema state.
+     */
+    private transient Set<TablePath> sentCreateTableEventTables;
 
     @Override
     public List<Event> deserialize(FlussSourceRecord record, TablePath tablePath) {
@@ -128,23 +137,32 @@ public class FlussRecordDeserializer implements FlussDeserializer<Event> {
                 (org.apache.flink.cdc.common.types.RowType) FlussConversions.toCdcType(rowType);
         if (schemaId >= 0) {
             ensureCacheInitialized();
+
+            // Always re-emit CreateTableEvent for tables that haven't sent one in this execution.
+            // This is critical after state restoration: downstream CDC operators need
+            // CreateTableEvent to rebuild their internal schema state.
+            if (!sentCreateTableEventTables.contains(tablePath)) {
+                org.apache.flink.cdc.common.schema.Schema.Builder schemaBuilder =
+                        org.apache.flink.cdc.common.schema.Schema.newBuilder();
+                for (DataField field : rowType.getFields()) {
+                    schemaBuilder.physicalColumn(
+                            field.getName(), FlussConversions.toCdcType(field.getType()));
+                }
+                events.add(new CreateTableEvent(tableId, schemaBuilder.build()));
+                sentCreateTableEventTables.add(tablePath);
+                latestSchemaIdCache.put(tablePath, schemaId);
+                latestRowTypeCache.put(tablePath, rowType);
+                latestRecordDataGeneratorCache.put(
+                        tablePath, new BinaryRecordDataGenerator(cdcRowType));
+                return false;
+            }
+
             Integer cachedSchemaId = latestSchemaIdCache.get(tablePath);
             if (cachedSchemaId == null || schemaId > cachedSchemaId) {
-                if (cachedSchemaId == null) {
-                    // First record for this table — emit CreateTableEvent
-                    org.apache.flink.cdc.common.schema.Schema.Builder schemaBuilder =
-                            org.apache.flink.cdc.common.schema.Schema.newBuilder();
-                    for (DataField field : rowType.getFields()) {
-                        schemaBuilder.physicalColumn(
-                                field.getName(), FlussConversions.toCdcType(field.getType()));
-                    }
-                    events.add(new CreateTableEvent(tableId, schemaBuilder.build()));
-                } else {
-                    // SchemaId changed — infer and emit schema change events
-                    inferSchemaChangeEvent = true;
-                    RowType oldRowType = latestRowTypeCache.get(tablePath);
-                    events.addAll(inferSchemaChanges(tableId, tablePath, oldRowType, rowType));
-                }
+                // SchemaId changed — infer and emit schema change events
+                inferSchemaChangeEvent = true;
+                RowType oldRowType = latestRowTypeCache.get(tablePath);
+                events.addAll(inferSchemaChanges(tableId, tablePath, oldRowType, rowType));
                 latestSchemaIdCache.put(tablePath, schemaId);
                 latestRowTypeCache.put(tablePath, rowType);
                 latestRecordDataGeneratorCache.put(
@@ -223,6 +241,7 @@ public class FlussRecordDeserializer implements FlussDeserializer<Event> {
             latestSchemaIdCache = new HashMap<>();
             latestRowTypeCache = new HashMap<>();
             latestRecordDataGeneratorCache = new HashMap<>();
+            sentCreateTableEventTables = new HashSet<>();
         }
     }
 
