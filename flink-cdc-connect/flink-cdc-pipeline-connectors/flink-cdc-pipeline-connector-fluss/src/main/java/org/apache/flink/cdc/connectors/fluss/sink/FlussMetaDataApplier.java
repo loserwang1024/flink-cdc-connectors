@@ -26,6 +26,8 @@ import org.apache.flink.cdc.common.event.SchemaChangeEventTypeFamily;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
+import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidator;
+import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidators;
 import org.apache.flink.table.api.ValidationException;
 
 import org.apache.fluss.client.Connection;
@@ -60,6 +62,7 @@ public class FlussMetaDataApplier implements MetadataApplier {
     private final Map<String, String> tableProperties;
     private final Map<String, List<String>> bucketKeysMap;
     private final Map<String, Integer> bucketNumMap;
+    private final SchemaValidator schemaValidator;
     private Set<SchemaChangeEventType> enabledEventTypes =
             new HashSet<>(Arrays.asList(CREATE_TABLE, DROP_TABLE));
 
@@ -68,10 +71,25 @@ public class FlussMetaDataApplier implements MetadataApplier {
             Map<String, String> tableProperties,
             Map<String, List<String>> bucketKeysMap,
             Map<String, Integer> bucketNumMap) {
+        this(
+                flussClientConfig,
+                tableProperties,
+                bucketKeysMap,
+                bucketNumMap,
+                SchemaValidationMode.PERMISSIVE);
+    }
+
+    public FlussMetaDataApplier(
+            Configuration flussClientConfig,
+            Map<String, String> tableProperties,
+            Map<String, List<String>> bucketKeysMap,
+            Map<String, Integer> bucketNumMap,
+            SchemaValidationMode schemaValidationMode) {
         this.flussClientConfig = flussClientConfig;
         this.tableProperties = tableProperties;
         this.bucketKeysMap = bucketKeysMap;
         this.bucketNumMap = bucketNumMap;
+        this.schemaValidator = SchemaValidators.create(schemaValidationMode);
     }
 
     @Override
@@ -218,5 +236,8 @@ public class FlussMetaDataApplier implements MetadataApplier {
                             + "\n Current Fluss's partition keys: "
                             + currentPartitionKeys);
         }
+
+        schemaValidator.validateSchema(
+                inferredFlussTable.getSchema(), currentTableInfo.getSchema());
     }
 }

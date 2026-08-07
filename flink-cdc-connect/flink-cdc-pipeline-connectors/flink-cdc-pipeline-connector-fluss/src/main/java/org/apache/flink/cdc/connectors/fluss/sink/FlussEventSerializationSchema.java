@@ -31,16 +31,16 @@ import org.apache.flink.cdc.connectors.fluss.sink.row.CdcAsFlussRow;
 import org.apache.flink.cdc.connectors.fluss.sink.v2.FlussEvent;
 import org.apache.flink.cdc.connectors.fluss.sink.v2.FlussEventSerializer;
 import org.apache.flink.cdc.connectors.fluss.sink.v2.FlussRowWithOp;
+import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidator;
+import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidators;
 
 import org.apache.fluss.client.Connection;
 import org.apache.fluss.client.table.Table;
 import org.apache.fluss.metadata.TablePath;
-import org.apache.fluss.types.DataType;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.apache.flink.cdc.connectors.fluss.sink.v2.FlussOperationType.APPEND;
@@ -53,8 +53,18 @@ import static org.apache.flink.cdc.connectors.fluss.utils.FlussConversions.toFlu
 public class FlussEventSerializationSchema implements FlussEventSerializer<Event> {
     private static final long serialVersionUID = 1L;
 
+    private final SchemaValidator schemaValidator;
+
     private transient Map<TableId, TableSchemaInfo> schemaMaps;
     private transient Connection connection;
+
+    public FlussEventSerializationSchema() {
+        this(SchemaValidationMode.PERMISSIVE);
+    }
+
+    public FlussEventSerializationSchema(SchemaValidationMode schemaValidationMode) {
+        this.schemaValidator = SchemaValidators.create(schemaValidationMode);
+    }
 
     @Override
     public void open(Connection connection) {
@@ -89,7 +99,8 @@ public class FlussEventSerializationSchema implements FlussEventSerializer<Event
                         new TableSchemaInfo(
                                 table.getTableInfo().getSchemaId(),
                                 newSchema,
-                                table.getTableInfo().getSchema());
+                                table.getTableInfo().getSchema(),
+                                schemaValidator);
                 schemaMaps.put(tableId, newSchemaInfo);
             }
         } else if (event instanceof AddColumnEvent) {
@@ -107,7 +118,8 @@ public class FlussEventSerializationSchema implements FlussEventSerializer<Event
                         new TableSchemaInfo(
                                 table.getTableInfo().getSchemaId(),
                                 SchemaUtils.applySchemaChangeEvent(schema, event),
-                                table.getTableInfo().getSchema());
+                                table.getTableInfo().getSchema(),
+                                schemaValidator);
                 schemaMaps.put(tableId, newSchemaInfo);
             }
         } else {
@@ -171,52 +183,14 @@ public class FlussEventSerializationSchema implements FlussEventSerializer<Event
         private TableSchemaInfo(
                 int schemaId,
                 org.apache.flink.cdc.common.schema.Schema upstreamCdcSchema,
-                org.apache.fluss.metadata.Schema downstreamFlussSchema) {
+                org.apache.fluss.metadata.Schema downstreamFlussSchema,
+                SchemaValidator schemaValidator) {
             this.schemaId = schemaId;
             this.upstreamCdcSchema = upstreamCdcSchema;
             this.downstreamFlussSchema = downstreamFlussSchema;
             this.indexMapping =
-                    sanityCheckAndGenerateIndexMapping(
+                    schemaValidator.validateAndGenerateIndexMapping(
                             toFlussSchema(upstreamCdcSchema), downstreamFlussSchema);
         }
-    }
-
-    static Map<Integer, Integer> sanityCheckAndGenerateIndexMapping(
-            org.apache.fluss.metadata.Schema inferredFlussSchema,
-            org.apache.fluss.metadata.Schema currentFlussNewSchema) {
-        List<String> inferredSchemaColumnNames = inferredFlussSchema.getColumnNames();
-        Map<String, Integer> reverseIndex = new HashMap<>();
-        for (int i = 0; i < inferredSchemaColumnNames.size(); i++) {
-            reverseIndex.put(inferredSchemaColumnNames.get(i), i);
-        }
-
-        List<String> currentSchemaColumnNames = currentFlussNewSchema.getColumnNames();
-        Map<Integer, Integer> indexMapping = new HashMap<>();
-        for (int newSchemaIndex = 0;
-                newSchemaIndex < currentSchemaColumnNames.size();
-                newSchemaIndex++) {
-            String columnName = currentSchemaColumnNames.get(newSchemaIndex);
-            if (reverseIndex.get(columnName) != null) {
-                Integer oldSchemaIndex = reverseIndex.get(columnName);
-                indexMapping.put(newSchemaIndex, oldSchemaIndex);
-
-                // Currently, we only support mismatched column counts between upstream and
-                // downstream, but not mismatched data types, to prevent errors caused by type
-                // changes.
-                // In the future, meta applier will be used to handle column changes.
-                DataType oldDataType = inferredFlussSchema.getRowType().getTypeAt(oldSchemaIndex);
-                DataType newDataType = currentFlussNewSchema.getRowType().getTypeAt(newSchemaIndex);
-                if (!oldDataType.copy(false).equals(newDataType.copy(false))) {
-                    throw new IllegalArgumentException(
-                            "The data type of column "
-                                    + columnName
-                                    + " is changed from "
-                                    + oldDataType
-                                    + " to "
-                                    + newDataType);
-                }
-            }
-        }
-        return indexMapping;
     }
 }

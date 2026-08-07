@@ -23,6 +23,7 @@ import org.apache.flink.cdc.common.factories.FactoryHelper;
 import org.apache.flink.cdc.common.sink.DataSink;
 import org.apache.flink.cdc.connectors.fluss.sink.FlussDataSink;
 
+import org.apache.flink.cdc.connectors.fluss.sink.SchemaValidationMode;
 import org.apache.fluss.config.ConfigOptions;
 import org.apache.fluss.config.Configuration;
 
@@ -36,6 +37,7 @@ import static org.apache.flink.cdc.connectors.fluss.sink.FlussDataSinkOptions.BO
 import static org.apache.flink.cdc.connectors.fluss.sink.FlussDataSinkOptions.BUCKET_KEY;
 import static org.apache.flink.cdc.connectors.fluss.sink.FlussDataSinkOptions.BUCKET_NUMBER;
 import static org.apache.flink.cdc.connectors.fluss.sink.FlussDataSinkOptions.CLIENT_PROPERTIES_PREFIX;
+import static org.apache.flink.cdc.connectors.fluss.sink.FlussDataSinkOptions.SCHEMA_VALIDATION_MODE;
 import static org.apache.flink.cdc.connectors.fluss.sink.FlussDataSinkOptions.TABLE_PROPERTIES_PREFIX;
 import static org.apache.flink.cdc.connectors.fluss.utils.FlussConfigUtils.parseBucketKeys;
 import static org.apache.flink.cdc.connectors.fluss.utils.FlussConfigUtils.parseBucketNumber;
@@ -57,7 +59,14 @@ public class FlussDataSinkFactory implements DataSinkFactory {
                 parseBucketKeys(factoryConfiguration.get(BUCKET_KEY));
         Map<String, Integer> bucketNumMap =
                 parseBucketNumber(factoryConfiguration.get(BUCKET_NUMBER));
-        return new FlussDataSink(flussClientConfig, tableProperties, bucketKeysMap, bucketNumMap);
+        SchemaValidationMode schemaValidationMode=  factoryConfiguration.get(SCHEMA_VALIDATION_MODE);
+        return new FlussDataSink(
+                flussClientConfig,
+                tableProperties,
+                bucketKeysMap,
+                bucketNumMap,
+                schemaValidationMode
+                );
     }
 
     @Override
@@ -77,6 +86,7 @@ public class FlussDataSinkFactory implements DataSinkFactory {
         Set<ConfigOption<?>> options = new HashSet<>();
         options.add(BUCKET_KEY);
         options.add(BUCKET_NUMBER);
+        options.add(SCHEMA_VALIDATION_MODE);
         return options;
     }
 

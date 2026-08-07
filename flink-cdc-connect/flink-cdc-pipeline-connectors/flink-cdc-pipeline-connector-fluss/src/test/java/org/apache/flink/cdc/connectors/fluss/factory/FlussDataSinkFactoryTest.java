@@ -97,6 +97,52 @@ public class FlussDataSinkFactoryTest {
     }
 
     @Test
+    void testSchemaValidationModeOption() {
+        DataSinkFactory sinkFactory =
+                FactoryDiscoveryUtils.getFactoryByIdentifier("fluss", DataSinkFactory.class);
+        Assertions.assertThat(sinkFactory).isInstanceOf(FlussDataSinkFactory.class);
+
+        Configuration conf =
+                Configuration.fromMap(
+                        ImmutableMap.<String, String>builder()
+                                .put(FlussDataSinkOptions.BOOTSTRAP_SERVERS.key(), "localhost:9123")
+                                .put(
+                                        FlussDataSinkOptions.SCHEMA_VALIDATION_MODE.key(),
+                                        "target-superset")
+                                .build());
+        DataSink dataSink =
+                sinkFactory.createDataSink(
+                        new FactoryHelper.DefaultContext(
+                                conf, conf, Thread.currentThread().getContextClassLoader()));
+        Assertions.assertThat(dataSink).isInstanceOf(FlussDataSink.class);
+    }
+
+    @Test
+    void testInvalidSchemaValidationModeOption() {
+        DataSinkFactory sinkFactory =
+                FactoryDiscoveryUtils.getFactoryByIdentifier("fluss", DataSinkFactory.class);
+        Assertions.assertThat(sinkFactory).isInstanceOf(FlussDataSinkFactory.class);
+
+        Configuration conf =
+                Configuration.fromMap(
+                        ImmutableMap.<String, String>builder()
+                                .put(FlussDataSinkOptions.BOOTSTRAP_SERVERS.key(), "localhost:9123")
+                                .put(FlussDataSinkOptions.SCHEMA_VALIDATION_MODE.key(), "unknown")
+                                .build());
+
+        assertThatThrownBy(
+                        () ->
+                                sinkFactory.createDataSink(
+                                        new FactoryHelper.DefaultContext(
+                                                conf,
+                                                conf,
+                                                Thread.currentThread().getContextClassLoader())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(
+                        "Could not parse value 'unknown' for key 'schema-validation-mode'");
+    }
+
+    @Test
     void testWrongBucketKeyAndBucketNum() {
         DataSinkFactory sinkFactory =
                 FactoryDiscoveryUtils.getFactoryByIdentifier("fluss", DataSinkFactory.class);

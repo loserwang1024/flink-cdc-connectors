@@ -118,6 +118,13 @@ Pipeline Connector Options
       <td>The number of buckets of each Fluss table.Tables are separated by ';'.Format: database1.table1:4;database1.table2:8. </td>
     </tr>
     <tr>
+      <td>schema-validation-mode</td>
+      <td>optional</td>
+      <td style="word-wrap: break-word;">permissive</td>
+      <td>String</td>
+      <td>Controls how the sink validates the input schema against the target Fluss table schema. Supported values are <code>permissive</code> and <code>target-superset</code>. In <code>permissive</code> mode, the sink keeps the existing schema mapping behavior. In <code>target-superset</code> mode, the target Fluss table must contain all input columns by name. </td>
+    </tr>
+    <tr>
       <td>properties.table.*</td>
       <td>optional</td>
       <td style="word-wrap: break-word;">(none)</td>
@@ -151,6 +158,8 @@ Pipeline Connector Options
   * **Alter column type** — not supported. 
 
   To enable schema change synchronization, configure the pipeline with `schema.change.behavior: lenient`. If you want to ignore all schema changes, use `schema.change.behavior: IGNORE`.
+
+* The `schema-validation-mode` option controls compatibility checks when the input schema differs from the target Fluss table schema. Use `target-superset` to reject input columns that do not exist in the target table and avoid silently ignoring those values.
 
 * For data synchronization, the pipeline connector uses [Fluss Java Client](https://fluss.apache.org/docs/apis/java-client/)
   to write data to Fluss.

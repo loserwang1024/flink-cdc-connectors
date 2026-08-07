@@ -116,6 +116,13 @@ Pipeline Connector Options
       <td>每个 Fluss 表的桶数量。表之间用 ';' 分隔。格式：database1.table1:4;database1.table2:8。 </td>
     </tr>
     <tr>
+      <td>schema-validation-mode</td>
+      <td>optional</td>
+      <td style="word-wrap: break-word;">permissive</td>
+      <td>String</td>
+      <td>控制 Sink 如何校验输入 Schema 与目标 Fluss 表 Schema 的兼容性。支持的值包括 <code>permissive</code> 和 <code>target-superset</code>。在 <code>permissive</code> 模式下，Sink 保持现有的 Schema 映射行为；在 <code>target-superset</code> 模式下，目标 Fluss 表必须按列名包含所有输入列。 </td>
+    </tr>
+    <tr>
       <td>properties.table.*</td>
       <td>optional</td>
       <td style="word-wrap: break-word;">(none)</td>
@@ -149,6 +156,8 @@ Pipeline Connector Options
   * **修改列类型** — 不支持。
 
   要启用 Schema 变更同步，请在 pipeline 中配置 `schema.change.behavior: lenient`。如果想要忽略所有 Schema 变更，使用 `schema.change.behavior: IGNORE`。
+
+* `schema-validation-mode` 选项用于控制输入 Schema 与目标 Fluss 表 Schema 不一致时的兼容性校验。使用 `target-superset` 可以拒绝目标表中不存在的输入列，避免这些字段的值被静默忽略。
 
 * 关于数据同步， Pipeline 连接器使用 [Fluss Java Client](https://fluss.apache.org/docs/apis/java-client/) 向 Fluss 写入数据.
 

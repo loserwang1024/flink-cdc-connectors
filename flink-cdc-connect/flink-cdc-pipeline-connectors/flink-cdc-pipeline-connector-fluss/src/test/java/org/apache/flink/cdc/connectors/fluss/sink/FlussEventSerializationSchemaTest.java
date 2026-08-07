@@ -85,7 +85,7 @@ public class FlussEventSerializationSchemaTest {
                         Collections.emptyMap(),
                         Collections.emptyMap(),
                         Collections.emptyMap());
-        serializer = new FlussEventSerializationSchema();
+        serializer = new FlussEventSerializationSchema(SchemaValidationMode.PERMISSIVE);
         serializer.open(conn);
     }
 

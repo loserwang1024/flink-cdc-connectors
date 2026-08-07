@@ -37,28 +37,38 @@ public class FlussDataSink implements DataSink {
     private final Map<String, String> tableProperties;
     private final Map<String, List<String>> bucketKeysMap;
     private final Map<String, Integer> bucketNumMap;
+    private final SchemaValidationMode schemaValidationMode;
+
 
     public FlussDataSink(
             Configuration flussClientConfig,
             Map<String, String> tableProperties,
             Map<String, List<String>> bucketKeysMap,
-            Map<String, Integer> bucketNumMap) {
+            Map<String, Integer> bucketNumMap,
+            SchemaValidationMode schemaValidationMode) {
         this.flussClientConfig = flussClientConfig;
         this.tableProperties = tableProperties;
         this.bucketKeysMap = bucketKeysMap;
         this.bucketNumMap = bucketNumMap;
+        this.schemaValidationMode = schemaValidationMode;
     }
 
     @Override
     public EventSinkProvider getEventSinkProvider() {
         return FlinkSinkProvider.of(
-                new FlussSink<>(flussClientConfig, new FlussEventSerializationSchema()));
+                new FlussSink<>(
+                        flussClientConfig,
+                        new FlussEventSerializationSchema(schemaValidationMode)));
     }
 
     @Override
     public MetadataApplier getMetadataApplier() {
         return new FlussMetaDataApplier(
-                flussClientConfig, tableProperties, bucketKeysMap, bucketNumMap);
+                flussClientConfig,
+                tableProperties,
+                bucketKeysMap,
+                bucketNumMap,
+                schemaValidationMode);
     }
 
     @Override

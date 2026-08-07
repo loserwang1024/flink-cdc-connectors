@@ -54,4 +54,12 @@ public class FlussDataSinkOptions {
                             "The number of buckets of each Fluss table."
                                     + "Tables are separated by ';'. "
                                     + "Format: database1.table1:4;database1.table2:8.");
+
+    public static final ConfigOption<SchemaValidationMode> SCHEMA_VALIDATION_MODE =
+            ConfigOptions.key("schema-validation-mode")
+                    .enumType(SchemaValidationMode.class)
+                    .defaultValue(SchemaValidationMode.PERMISSIVE)
+                    .withDescription(
+                            "Controls how the Fluss sink validates the input schema against the target Fluss table schema. "
+                                    + "Supported values are 'permissive' and 'target-superset'.");
 }
