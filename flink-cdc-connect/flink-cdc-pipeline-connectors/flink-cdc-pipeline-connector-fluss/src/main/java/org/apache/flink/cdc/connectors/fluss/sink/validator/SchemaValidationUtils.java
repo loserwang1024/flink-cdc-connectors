@@ -30,7 +30,16 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /** Utilities for Fluss schema validation. */
-class SchemaValidationUtils {
+public class SchemaValidationUtils {
+
+    public static boolean sameDataTypeIgnoreNullability(
+            org.apache.fluss.types.DataType firstDataType,
+            org.apache.fluss.types.DataType secondDataType) {
+        return firstDataType
+                .copy(false)
+                .asSerializableString()
+                .equals(secondDataType.copy(false).asSerializableString());
+    }
 
     static void validateTargetContainsAllInputColumns(Schema inputSchema, Schema targetSchema) {
         List<String> inputColumnNames = inputSchema.getColumnNames();
@@ -79,7 +88,7 @@ class SchemaValidationUtils {
 
     private static void validateMappedFieldType(
             String columnName, DataType inputDataType, DataType targetDataType) {
-        if (!inputDataType.copy(false).equals(targetDataType.copy(false))) {
+        if (!sameDataTypeIgnoreNullability(inputDataType, targetDataType)) {
             throw new ValidationException(
                     "The data type of column "
                             + columnName

@@ -25,6 +25,7 @@ import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.common.types.IntType;
+import org.apache.flink.table.api.ValidationException;
 
 import org.apache.fluss.client.Connection;
 import org.apache.fluss.client.ConnectionFactory;
@@ -513,6 +514,7 @@ public class FlussMetadataApplierTest {
                 .get();
 
         Column oldColumn = Column.physicalColumn("name", DataTypes.STRING());
+        Column existingColumn = Column.physicalColumn("name", DataTypes.INT());
         Column newColumn = Column.physicalColumn("newColumn", DataTypes.STRING());
 
         try (FlussMetaDataApplier applier =
@@ -529,7 +531,13 @@ public class FlussMetadataApplierTest {
                                                     Collections.singletonList(
                                                             AddColumnEvent.last(oldColumn)))))
                     .rootCause()
-                    .hasMessageContaining("Column name already exists.");
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Column name already exists")
+                    .hasMessageContaining("with different data type");
+            applier.applySchemaChange(
+                    new AddColumnEvent(
+                            tableId,
+                            Collections.singletonList(AddColumnEvent.last(existingColumn))));
             applier.applySchemaChange(
                     new AddColumnEvent(
                             tableId, Collections.singletonList(AddColumnEvent.last(newColumn))));

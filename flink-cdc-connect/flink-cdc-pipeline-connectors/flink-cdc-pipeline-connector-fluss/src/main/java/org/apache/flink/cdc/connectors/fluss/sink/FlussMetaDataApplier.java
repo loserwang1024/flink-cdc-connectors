@@ -26,6 +26,7 @@ import org.apache.flink.cdc.common.event.SchemaChangeEventTypeFamily;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Column;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
+import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidationUtils;
 import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidator;
 import org.apache.flink.cdc.connectors.fluss.sink.validator.SchemaValidators;
 import org.apache.flink.table.api.ValidationException;
@@ -35,10 +36,12 @@ import org.apache.fluss.client.ConnectionFactory;
 import org.apache.fluss.client.admin.Admin;
 import org.apache.fluss.config.Configuration;
 import org.apache.fluss.metadata.DatabaseDescriptor;
+import org.apache.fluss.metadata.Schema;
 import org.apache.fluss.metadata.TableChange;
 import org.apache.fluss.metadata.TableDescriptor;
 import org.apache.fluss.metadata.TableInfo;
 import org.apache.fluss.metadata.TablePath;
+import org.apache.fluss.types.DataType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -165,35 +168,80 @@ public class FlussMetaDataApplier implements MetadataApplier {
     }
 
     private void applyAddColumnTable(AddColumnEvent event) {
-        List<TableChange> tableChanges = new ArrayList<>();
-        event.getAddedColumns()
-                .forEach(
-                        columnWithPosition -> {
-                            if (columnWithPosition.getPosition()
-                                    != AddColumnEvent.ColumnPosition.LAST) {
-                                throw new IllegalArgumentException(
-                                        "Fluss metadata applier only supports LAST position for adding columns now but receives "
-                                                + columnWithPosition.getPosition()
-                                                + ". Consider using 'schema.change.behavior' configuration with 'LENIENT' mode to handle schema changes more flexibly.");
-                            }
-
-                            Column column = columnWithPosition.getAddColumn();
-                            tableChanges.add(
-                                    TableChange.addColumn(
-                                            column.getName(),
-                                            toFlussType(column.getType()),
-                                            column.getComment(),
-                                            TableChange.ColumnPosition.last()));
-                        });
-
         try (Connection connection = ConnectionFactory.createConnection(flussClientConfig);
                 Admin admin = connection.getAdmin()) {
             TableId tableId = event.tableId();
             TablePath tablePath = new TablePath(tableId.getSchemaName(), tableId.getTableName());
+            Schema currentSchema = admin.getTableInfo(tablePath).get().getSchema();
+            Map<String, Schema.Column> currentColumnByName =
+                    currentSchema.getColumns().stream()
+                            .collect(Collectors.toMap(Schema.Column::getName, column -> column));
+            List<TableChange> tableChanges =
+                    generateAddColumnChanges(event, tablePath, currentColumnByName);
+            if (tableChanges.isEmpty()) {
+                return;
+            }
             admin.alterTable(tablePath, tableChanges, true).get();
         } catch (Exception e) {
             LOG.error("Failed to apply schema change {}", event, e);
             throw new RuntimeException(e);
+        }
+    }
+
+    private List<TableChange> generateAddColumnChanges(
+            AddColumnEvent event,
+            TablePath tablePath,
+            Map<String, Schema.Column> currentColumnByName) {
+        List<TableChange> tableChanges = new ArrayList<>();
+        for (AddColumnEvent.ColumnWithPosition columnWithPosition : event.getAddedColumns()) {
+            Column column = columnWithPosition.getAddColumn();
+            DataType newColumnDataType = toFlussType(column.getType());
+            Schema.Column existingColumn = currentColumnByName.get(column.getName());
+            if (existingColumn != null) {
+                validateExistingColumnType(
+                        tablePath, column.getName(), newColumnDataType, existingColumn);
+                LOG.warn(
+                        "Ignore AddColumnEvent for table {} because column {} already exists in downstream Fluss table.",
+                        tablePath,
+                        column.getName());
+                continue;
+            }
+
+            if (columnWithPosition.getPosition() != AddColumnEvent.ColumnPosition.LAST) {
+                throw new IllegalArgumentException(
+                        "Fluss metadata applier only supports LAST position for adding columns now but receives "
+                                + columnWithPosition.getPosition()
+                                + ". Consider using 'schema.change.behavior' configuration with 'LENIENT' mode to handle schema changes more flexibly.");
+            }
+
+            tableChanges.add(
+                    TableChange.addColumn(
+                            column.getName(),
+                            newColumnDataType,
+                            column.getComment(),
+                            TableChange.ColumnPosition.last()));
+        }
+        return tableChanges;
+    }
+
+    private void validateExistingColumnType(
+            TablePath tablePath,
+            String columnName,
+            DataType expectedDataType,
+            Schema.Column existingColumn) {
+        DataType existingDataType = existingColumn.getDataType();
+        if (!SchemaValidationUtils.sameDataTypeIgnoreNullability(
+                expectedDataType, existingDataType)) {
+            throw new ValidationException(
+                    "Column "
+                            + columnName
+                            + " already exists in downstream Fluss table "
+                            + tablePath
+                            + " with different data type. Expected "
+                            + expectedDataType
+                            + ", but current type is "
+                            + existingDataType
+                            + ".");
         }
     }
 
