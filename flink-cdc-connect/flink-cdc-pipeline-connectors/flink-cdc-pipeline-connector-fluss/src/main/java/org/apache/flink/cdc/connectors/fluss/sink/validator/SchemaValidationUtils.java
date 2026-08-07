@@ -32,8 +32,6 @@ import java.util.stream.Collectors;
 /** Utilities for Fluss schema validation. */
 class SchemaValidationUtils {
 
-
-
     static void validateTargetContainsAllInputColumns(Schema inputSchema, Schema targetSchema) {
         List<String> inputColumnNames = inputSchema.getColumnNames();
         Set<String> targetColumnNames = new HashSet<>(targetSchema.getColumnNames());

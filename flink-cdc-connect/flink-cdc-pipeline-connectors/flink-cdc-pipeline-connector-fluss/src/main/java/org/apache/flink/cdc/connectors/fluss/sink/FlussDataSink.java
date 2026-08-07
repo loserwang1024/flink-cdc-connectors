@@ -39,7 +39,6 @@ public class FlussDataSink implements DataSink {
     private final Map<String, Integer> bucketNumMap;
     private final SchemaValidationMode schemaValidationMode;
 
-
     public FlussDataSink(
             Configuration flussClientConfig,
             Map<String, String> tableProperties,

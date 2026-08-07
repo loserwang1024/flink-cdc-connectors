@@ -22,8 +22,8 @@ import org.apache.flink.cdc.common.factories.DataSinkFactory;
 import org.apache.flink.cdc.common.factories.FactoryHelper;
 import org.apache.flink.cdc.common.sink.DataSink;
 import org.apache.flink.cdc.connectors.fluss.sink.FlussDataSink;
-
 import org.apache.flink.cdc.connectors.fluss.sink.SchemaValidationMode;
+
 import org.apache.fluss.config.ConfigOptions;
 import org.apache.fluss.config.Configuration;
 
@@ -59,14 +59,14 @@ public class FlussDataSinkFactory implements DataSinkFactory {
                 parseBucketKeys(factoryConfiguration.get(BUCKET_KEY));
         Map<String, Integer> bucketNumMap =
                 parseBucketNumber(factoryConfiguration.get(BUCKET_NUMBER));
-        SchemaValidationMode schemaValidationMode=  factoryConfiguration.get(SCHEMA_VALIDATION_MODE);
+        SchemaValidationMode schemaValidationMode =
+                factoryConfiguration.get(SCHEMA_VALIDATION_MODE);
         return new FlussDataSink(
                 flussClientConfig,
                 tableProperties,
                 bucketKeysMap,
                 bucketNumMap,
-                schemaValidationMode
-                );
+                schemaValidationMode);
     }
 
     @Override
