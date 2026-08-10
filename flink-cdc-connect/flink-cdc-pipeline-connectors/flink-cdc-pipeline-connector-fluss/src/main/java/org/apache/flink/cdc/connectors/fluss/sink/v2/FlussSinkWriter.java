@@ -109,7 +109,6 @@ public class FlussSinkWriter<InputT> implements SinkWriter<InputT> {
                     continue;
                 }
                 MultiTableWriteRecord writeRecord = toWriteRecord(opType, tablePath, row, schemaId);
-                LOG.info("------writeRecord  " + writeRecord);
                 CompletableFuture<?> writeFuture = multiTableWriter.write(writeRecord);
                 writeFuture.whenComplete(
                         (ignored, throwable) -> {
